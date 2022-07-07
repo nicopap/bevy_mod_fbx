@@ -1,4 +1,5 @@
-// Adopted from fbxcel-dom example
+// Adopted from fbxcel-dom example.
+// Scan given fbx file to get useful info.
 
 fn main() {
     env_logger::init();
@@ -18,16 +19,16 @@ fn main() {
     if let fbxcel_dom::any::AnyDocument::V7400(ver, doc) =
         fbxcel_dom::any::AnyDocument::from_seekable_reader(reader).expect("Failed to load document")
     {
-        println!("Loaded FBX DOM successfully: FBX version = {:?}", ver);
+        println!("Loaded FBX with version = {:?}\n", ver);
 
         doc.scenes().for_each(|scene| {
-            println!("Scene object: object_id={:?}", scene.object_id());
-
-            let root_id = scene
-                .root_object_id()
-                .expect("Failed to get root object ID");
-
-            println!("\tRoot object ID: {:?}", root_id);
+            println!("Scene: {:#?} (name)", scene.name());
+            println!("  Class - {:#?}", scene.class());
+            println!("  Subclass - {:#?}", scene.subclass());
+            println!("  Node ID - {:#?}", scene.object_node_id());
+            println!("  Root ID - {:#?}", scene.root_object_id());
+            println!("  Object ID - {:#?}", scene.object_id());
+            println!("  Object type - {:#?}", scene.get_typed());
         });
     } else {
         panic!("FBX version unsupported by this example")
