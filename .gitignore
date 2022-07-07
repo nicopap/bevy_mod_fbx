@@ -1,0 +1,14 @@
+# Mercurial
+.hg/
+.hgignore
+
+# Cargo
+/target
+Cargo.lock
+
+# VScode
+.vscode
+
+# Jetbrains
+.idea
+.fleet

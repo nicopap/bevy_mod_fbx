@@ -1,0 +1,10 @@
+[package]
+name = "bevy_fbx"
+version = "0.1.0-dev"
+edition = "2021"
+repository = "https://github.com/HeavyRain266/bevy_fbx"
+description = "Autodesk's Filmbox (*.fbx) scene loader for Bevy Engine"
+license = "MIT OR Apache-2.0"
+keywords = ["bevy", "bevy_plugin", "fbx_loader"]
+
+[dependencies]
