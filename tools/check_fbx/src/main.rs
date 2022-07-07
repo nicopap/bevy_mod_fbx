@@ -22,7 +22,12 @@ fn main() {
         println!("Loaded FBX with version = {:?}\n", ver);
 
         doc.scenes().for_each(|scene| {
-            println!("Scene: {:#?} (name)", scene.name());
+            if scene.name().is_some() {
+                println!("Scene: {:#?}", scene.name());
+            } else {
+                println!("Scene: (no name)");
+            }
+
             println!("  Class - {:#?}", scene.class());
             println!("  Subclass - {:#?}", scene.subclass());
             println!("  Node ID - {:#?}", scene.object_node_id());
