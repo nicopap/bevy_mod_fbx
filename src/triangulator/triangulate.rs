@@ -10,7 +10,9 @@ use fbxcel_dom::v7400::data::mesh::{PolygonVertexIndex, PolygonVertices};
 /// Axis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Axis {
-    X, Y, Z,
+    X,
+    Y,
+    Z,
 }
 
 /// Returns smallest direction.
@@ -27,7 +29,6 @@ fn smallest_direction(v: &Vector3<f64>) -> Axis {
         Axis::Y
     }
 }
-
 
 /// Triangulator.
 pub fn triangulator(
