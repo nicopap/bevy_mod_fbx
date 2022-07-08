@@ -1,6 +1,8 @@
 //! Bounding box.
 // Derived frmo https://github.com/lo48576/fbx-viewer/blob/develop/src/util/bbox.rs
 
+#![allow(unused)] // Remove it later.
+
 use std::iter::FromIterator;
 
 use cgmath::{num_traits::Float, BaseFloat, Point3, Vector3};
