@@ -1,10 +1,7 @@
 //! Triangulator.
 
-use std::f64;
-
 use anyhow::{anyhow, bail};
-// TODO: Switch to bevy_math
-use cgmath::{InnerSpace, Point3, Vector2, Vector3};
+use bevy_math::{DVec2, DVec3, Vec2, Vec3};
 use fbxcel_dom::v7400::data::mesh::{PolygonVertexIndex, PolygonVertices};
 
 /// Axis.
@@ -16,17 +13,12 @@ enum Axis {
 }
 
 /// Returns smallest direction.
-fn smallest_direction(v: &Vector3<f64>) -> Axis {
-    if v.x < v.y {
-        if v.z < v.x {
-            Axis::Z
-        } else {
-            Axis::X
-        }
-    } else if v.z < v.y {
-        Axis::Z
-    } else {
-        Axis::Y
+fn smallest_direction(v: &DVec3) -> Axis {
+    match () {
+        () if v.x < v.y && v.z < v.x => Axis::Z,
+        () if v.x < v.y => Axis::X,
+        () if v.z < v.y => Axis::Z,
+        () => Axis::Y,
     }
 }
 
@@ -98,18 +90,9 @@ pub fn triangulator(
                     bounding_box(&points).expect("Should never happen: there are 5 or more points");
                 let width = max - min;
                 match smallest_direction(&width) {
-                    Axis::X => points
-                        .into_iter()
-                        .map(|v| Vector2::new(v[1], v[2]))
-                        .collect(),
-                    Axis::Y => points
-                        .into_iter()
-                        .map(|v| Vector2::new(v[0], v[2]))
-                        .collect(),
-                    Axis::Z => points
-                        .into_iter()
-                        .map(|v| Vector2::new(v[0], v[1]))
-                        .collect(),
+                    Axis::X => points.into_iter().map(|v| DVec2::new(v[1], v[2])).collect(),
+                    Axis::Y => points.into_iter().map(|v| DVec2::new(v[0], v[2])).collect(),
+                    Axis::Z => points.into_iter().map(|v| DVec2::new(v[0], v[1])).collect(),
                 }
             };
             // Normal directions.
@@ -124,8 +107,8 @@ pub fn triangulator(
                     .zip(iter_prev)
                     .zip(iter_next)
                     .map(|((cur, prev), next)| {
-                        let prev_cur = prev - cur;
-                        let cur_next = cur - next;
+                        let prev_cur = *prev - *cur;
+                        let cur_next = *cur - *next;
                         prev_cur.perp_dot(cur_next) > 0.0
                     })
                     .collect::<Vec<_>>()
@@ -164,31 +147,21 @@ pub fn triangulator(
 }
 
 /// Returns the vector.
-fn get_vec(pvs: &PolygonVertices<'_>, pvi: PolygonVertexIndex) -> anyhow::Result<Point3<f64>> {
+fn get_vec(pvs: &PolygonVertices<'_>, pvi: PolygonVertexIndex) -> anyhow::Result<DVec3> {
     pvs.control_point(pvi)
         .map(Into::into)
         .ok_or_else(|| anyhow!("Index out of range: {:?}", pvi))
 }
 
 /// Returns bounding box as `(min, max)`.
-fn bounding_box<'a>(
-    points: impl IntoIterator<Item = &'a Point3<f64>>,
-) -> Option<(Point3<f64>, Point3<f64>)> {
+fn bounding_box<'a>(points: impl IntoIterator<Item = &'a DVec3>) -> Option<(DVec3, DVec3)> {
     points.into_iter().fold(None, |minmax, point| {
         minmax.map_or_else(
             || Some((*point, *point)),
             |(min, max)| {
                 Some((
-                    Point3 {
-                        x: min.x.min(point.x),
-                        y: min.y.min(point.y),
-                        z: min.z.min(point.z),
-                    },
-                    Point3 {
-                        x: max.x.max(point.x),
-                        y: max.y.max(point.y),
-                        z: max.z.max(point.z),
-                    },
+                    DVec3::new(min.x.min(point.x), min.y.min(point.y), min.z.min(point.z)),
+                    DVec3::new(max.x.max(point.x), max.y.max(point.y), max.z.max(point.z)),
                 ))
             },
         )
