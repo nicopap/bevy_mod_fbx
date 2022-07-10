@@ -1,6 +1,15 @@
-#![allow(dead_code)] // Remove later.
 #![allow(unused)] // Remove later.
 
+use bevy_app::{App, Plugin};
+use type_uuid::TypeUuid;
+
 mod data;
+mod loader;
 mod triangulator;
 mod utils;
+
+pub struct FbxPlugin;
+
+impl Plugin for FbxPlugin {
+    fn build(&self, app: &mut App) {}
+}

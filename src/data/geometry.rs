@@ -1,11 +1,11 @@
 //! Geometry.
 
-use crate::utils::bounding_box::OptionalBoundingBox3d;
+use crate::utils::bbox::OptionalBoundingBox3d;
 use bevy_math::{Vec2, Vec3};
 
 /// Geometry mesh.
 #[derive(Debug, Clone)]
-pub struct GeometryMesh {
+pub struct GeoMesh {
     /// Name.
     pub name: Option<String>,
     /// Positions.
@@ -18,7 +18,7 @@ pub struct GeometryMesh {
     pub indices_per_material: Vec<Vec<u32>>,
 }
 
-impl GeometryMesh {
+impl GeoMesh {
     /// Returns bounding box of the submesh at the given index.
     pub fn bbox_submesh(&self, submesh_i: usize) -> OptionalBoundingBox3d {
         self.indices_per_material.get(submesh_i).map_or_else(

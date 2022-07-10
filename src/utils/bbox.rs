@@ -1,7 +1,4 @@
 //! Bounding box.
-// Derived frmo https://github.com/lo48576/fbx-viewer/blob/develop/src/util/bbox.rs
-
-#![allow(unused)] // Remove it later.
 
 use bevy_math::Vec3;
 use std::iter::FromIterator;
@@ -167,10 +164,12 @@ impl FromIterator<Vec3> for OptionalBoundingBox3d {
         T: IntoIterator<Item = Vec3>,
     {
         let mut iter = iter.into_iter();
+
         let first = match iter.next() {
             Some(v) => v,
             None => return Self::default(),
         };
+
         Self {
             bbox: Some(BoundingBox3d::from(first).insert_extend(iter)),
         }
@@ -192,10 +191,12 @@ impl FromIterator<BoundingBox3d> for OptionalBoundingBox3d {
         T: IntoIterator<Item = BoundingBox3d>,
     {
         let mut iter = iter.into_iter();
+
         let first = match iter.next() {
             Some(v) => v,
             None => return Self::default(),
         };
+
         Self {
             bbox: Some(first.union_extend(iter)),
         }
@@ -217,10 +218,12 @@ impl FromIterator<OptionalBoundingBox3d> for OptionalBoundingBox3d {
         T: IntoIterator<Item = OptionalBoundingBox3d>,
     {
         let mut iter = iter.into_iter();
+
         let first = match iter.next() {
             Some(v) => v,
             None => return Self::default(),
         };
+
         first.union_extend(iter)
     }
 }

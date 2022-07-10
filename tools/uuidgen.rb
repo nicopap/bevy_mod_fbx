@@ -19,4 +19,4 @@ class String
 end
 
 puts 'INFO'.green + ': Generated new derive macro with UUID for you'
-puts 'INFO'.green + ": #[derive(uuid = \"#{SecureRandom.uuid}\")]".blue
+puts 'INFO'.green + + ":" + " #[derive(uuid = \"#{SecureRandom.uuid}\")]".blue
