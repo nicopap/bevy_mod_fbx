@@ -13,7 +13,7 @@ Autodesk Filmbox (*.fbx) loader for Bevy Engine.
 
 ### What have to be done
 
-- [ ] Replace `cgmath` with `bevy_math`
+- [X] Replace `cgmath` with `bevy_math`
 - [ ] Write basic loader
 - [ ] Add support for `bevy_animations`
 - [ ] Provide examples with usage of complex scenes
