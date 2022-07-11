@@ -271,20 +271,20 @@ impl<'b, 'w> Loader<'b, 'w> {
 
         let bevy_obj = mesh_obj.geometry().context("Failed to get geometry")?;
 
-        let materials = mesh_obj
-            .materials()
-            .map(|material_obj| self.load_material(material_obj))
-            .collect::<anyhow::Result<Vec<_>>>()
-            .context("Failed to load materials for mesh")?;
+        // let materials = mesh_obj
+        //     .materials()
+        //     .map(|material_obj| self.load_material(material_obj))
+        //     .collect::<anyhow::Result<Vec<_>>>()
+        //     .context("Failed to load materials for mesh")?;
 
         let mesh_handle = self
-            .load_bevy_mesh(bevy_obj, materials.len())
+            .load_bevy_mesh(bevy_obj, 0)
             .context("Failed to load geometry mesh")?;
 
         let mesh = FbxMesh {
             name: mesh_obj.name().map(Into::into),
             bevy_mesh_handle: mesh_handle,
-            materials,
+            materials: Vec::new(),
         };
 
         let mesh_handle = self

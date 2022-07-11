@@ -39,7 +39,7 @@ Controls:
     })
     .insert_resource(bevy::log::LogSettings {
         level: bevy::log::Level::INFO,
-        filter: "wgpu=warn,bevy_ecs=info,gilrs=info,bevy_fbx=trace".to_string(),
+        filter: "wgpu=warn,bevy_ecs=info,gilrs=info,bevy_fbx=debug".to_string(),
     })
     .insert_resource(AssetServerSettings {
         asset_folder: std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string()),
@@ -69,22 +69,21 @@ fn check_scene(
     handle: Option<Res<SceneHandle>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut already_spawned: Local<bool>,
-    meshes: Res<Assets<Mesh>>,
+    // meshes: Res<Assets<Mesh>>,
 ) {
     if !*already_spawned {
         match (|| {
             let scene = scenes.get(&handle.unwrap().handle)?;
-            println!("{scene:#?}");
-            let fbx_mesh_handle = scene.bevy_meshes.iter().next()?.0.clone_weak();
-            let standard_cube: Mesh = shape::Cube::new(1.0).into();
-            let fbx_mesh = meshes.get(fbx_mesh_handle.clone_weak())?;
-            println!("fbx mesh: {:?}", fbx_mesh.indices());
-            println!("std mesh: {:?}", standard_cube.indices());
-            commands.spawn_bundle(PbrBundle {
-                mesh: fbx_mesh_handle,
-                material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
-                ..default()
-            });
+            // println!("{scene:#?}");
+            // let fbx_mesh = meshes.get(fbx_mesh_handle.clone_weak())?;
+            // println!("fbx mesh: {:?}", fbx_mesh.indices());
+            for fbx_mesh_handle in scene.bevy_meshes.keys() {
+                commands.spawn_bundle(PbrBundle {
+                    mesh: fbx_mesh_handle.clone_weak(),
+                    material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
+                    ..default()
+                });
+            }
             Some(())
         })() {
             Some(()) => {
