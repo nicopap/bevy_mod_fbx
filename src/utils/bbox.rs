@@ -13,21 +13,6 @@ pub struct BoundingBox3d {
 }
 
 impl BoundingBox3d {
-    /// Returns minimum xyz.
-    pub fn min(&self) -> Vec3 {
-        self.min
-    }
-
-    /// Returns maximum xyz.
-    pub fn max(&self) -> Vec3 {
-        self.max
-    }
-
-    /// Returns the size of the bounding box.
-    pub fn size(&self) -> Vec3 {
-        self.max - self.min
-    }
-
     /// Extedns the bounding box to contain the given point.
     pub fn insert(&self, p: Vec3) -> Self {
         Self {
@@ -78,23 +63,6 @@ impl OptionalBoundingBox3d {
     /// Creates a new `OptionalBoundingBox3d`.
     pub fn new() -> Self {
         Self::default()
-    }
-
-    /// Returns the bounding box.
-    pub fn bounding_box(&self) -> Option<BoundingBox3d> {
-        self.bbox
-    }
-
-    /// Extedns the bounding box to contain the given point.
-    pub fn insert(&self, p: Vec3) -> Self {
-        self.bbox
-            .map_or_else(|| p.into(), |bbox| bbox.insert(p))
-            .into()
-    }
-
-    /// Extedns the bounding box to contain the given points.
-    pub fn insert_extend(&self, iter: impl IntoIterator<Item = Vec3>) -> Self {
-        iter.into_iter().fold(*self, |bbox, p| bbox.insert(p))
     }
 
     /// Merges the bounding boxes.
