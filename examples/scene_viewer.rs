@@ -1,8 +1,9 @@
 //! A simple FBX scene viewer made with Bevy.
 //!
-//! Just run `cargo run --release --example scene_viewer /path/to/model.fbx#Scene0`,
+//! Just run `cargo run --release --example scene_viewer /path/to/model.fbx#Scene`,
+//! (note: the #Scene is added if not already present)
 //! replacing the path as appropriate.
-//! With no arguments it will load the `FieldHelmet` fbx model from the repository assets subdirectory.
+//! With no arguments it will load the default cube.
 
 use bevy::{asset::AssetServerSettings, input::mouse::MouseMotion, prelude::*};
 use bevy_fbx::{FbxPlugin, FbxScene};
@@ -72,6 +73,7 @@ fn check_scene(
     // meshes: Res<Assets<Mesh>>,
 ) {
     if !*already_spawned {
+        // try
         match (|| {
             let scene = scenes.get(&handle.unwrap().handle)?;
             // println!("{scene:#?}");
@@ -85,6 +87,7 @@ fn check_scene(
                 });
             }
             Some(())
+            // catch
         })() {
             Some(()) => {
                 *already_spawned = true;
@@ -95,13 +98,16 @@ fn check_scene(
 }
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let scene_path = std::env::args()
+    let mut scene_path = std::env::args()
         .nth(1)
-        .expect("Provide FBX file path from CARGO_DIR directory");
+        .unwrap_or_else(|| "scenes/cube.fbx".to_owned());
+    if !scene_path.ends_with("#Scene") {
+        scene_path += "#Scene";
+    }
     info!("Loading {}", scene_path);
     commands
         .spawn_bundle(PerspectiveCameraBundle {
-            transform: Transform::from_xyz(10.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
+            transform: Transform::from_xyz(10.0, 4.4, 3.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
         })
         .insert(CameraController::default());
