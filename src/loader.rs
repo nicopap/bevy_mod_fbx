@@ -6,7 +6,7 @@ use anyhow::{anyhow, bail, Context};
 use bevy_asset::{AssetLoader, Handle, LoadContext, LoadedAsset};
 use bevy_ecs::prelude::World;
 use bevy_hierarchy::BuildWorldChildren;
-use bevy_log::{debug, trace};
+use bevy_log::{debug, error, trace};
 use bevy_math::{DVec2, DVec3};
 use bevy_pbr::PbrBundle;
 use bevy_render::mesh::{Indices, Mesh as BevyMesh, PrimitiveTopology, VertexAttributeValues};
@@ -57,7 +57,16 @@ impl AssetLoader for FbxLoader {
                 AnyDocument::from_seekable_reader(reader).expect("Failed to load document");
             if let AnyDocument::V7400(_ver, doc) = maybe_doc {
                 let loader = Loader::new(load_context);
-                loader.load_scene(*doc)
+                let potential_error = loader
+                    .load_scene(*doc)
+                    .with_context(|| format!("failed to load {:?}", load_context.path()));
+                match potential_error {
+                    Err(err) => {
+                        error!("{err:?}");
+                        Ok(())
+                    }
+                    Ok(()) => Ok(()),
+                }
             } else {
                 Err(anyhow!("TODO: better error handling in fbx loader"))
             }
