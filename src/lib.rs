@@ -5,7 +5,6 @@ use type_uuid::TypeUuid;
 
 mod data;
 mod loader;
-mod triangulator;
 mod utils;
 
 pub struct FbxPlugin;
