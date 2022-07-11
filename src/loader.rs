@@ -116,6 +116,10 @@ impl<'b, 'w> Loader<'b, 'w> {
         let triangle_pvi_indices = polygon_vertices
             .triangulate_each(triangulator::triangulate::triangulate)
             .context("Triangulation failed")?;
+        let indices: Vec<_> = triangle_pvi_indices
+            .triangle_vertex_indices()
+            .map(|t| t.to_usize() as u32)
+            .collect();
 
         // TODO this seems to duplicate vertices from neighboring triangles. We shouldn't
         // do that and instead set the indice attribute of the BevyMesh properly.
@@ -211,11 +215,6 @@ impl<'b, 'w> Loader<'b, 'w> {
             // indices_per_material
         };
 
-        let indices: Vec<_> = triangle_pvi_indices
-            .iter_control_point_indices()
-            .flatten()
-            .map(|t| t.to_u32())
-            .collect();
         trace!("{:?}", indices);
         if uv.len() != positions.len() || uv.len() != normals.len() || uv.len() != indices.len() {
             bail!(
