@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Scene.
 
 use super::{material::Material, mesh::FbxMesh, texture::Texture};

@@ -1,7 +1,7 @@
 //! Triangulator.
 
 use anyhow::{anyhow, bail};
-use bevy_math::{DVec2, DVec3, Vec2, Vec3};
+use bevy_math::{DVec2, DVec3};
 use fbxcel_dom::v7400::data::mesh::{PolygonVertexIndex, PolygonVertices};
 
 /// Axis.

@@ -16,7 +16,7 @@ use fbxcel_dom::{
 
 use crate::data::{mesh::FbxMesh, scene::Scene};
 
-use crate::triangulator;
+use crate::utils::triangulate;
 
 /// How much to scale down FBX stuff.
 const FBX_SCALE: f64 = 100.0;
@@ -97,7 +97,7 @@ impl<'b, 'w> Loader<'b, 'w> {
             .polygon_vertices()
             .context("Failed to get polygon vertices")?;
         let triangle_pvi_indices = polygon_vertices
-            .triangulate_each(triangulator::triangulate::triangulate)
+            .triangulate_each(triangulate::triangulate)
             .context("Triangulation failed")?;
         let indices: Vec<_> = triangle_pvi_indices
             .triangle_vertex_indices()
