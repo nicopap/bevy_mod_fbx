@@ -1,16 +1,30 @@
 //! FBX v7400 support.
 
+use std::path::Path;
+
 use anyhow::{anyhow, bail, Context};
 use bevy::{
-    asset::{AssetLoader, BoxedFuture, Handle, LoadContext, LoadedAsset},
+    asset::{AssetLoader, Handle, LoadContext, LoadedAsset},
+    ecs::world::{FromWorld, World},
+    log::{debug, error, trace},
     math::{DVec2, DVec3},
-    prelude::{debug, error, trace},
-    render::mesh::{Indices, Mesh as BevyMesh, PrimitiveTopology, VertexAttributeValues},
+    pbr::StandardMaterial,
+    render::{
+        mesh::{Indices, Mesh as BevyMesh, PrimitiveTopology, VertexAttributeValues},
+        render_resource::{AddressMode, SamplerDescriptor},
+        renderer::RenderDevice,
+        texture::{CompressedImageFormats, Image, ImageType},
+    },
+    utils::HashSet,
 };
 use fbxcel_dom::{
     any::AnyDocument,
     v7400::{
-        data::mesh::layer::TypedLayerElementHandle,
+        data::{
+            material::ShadingModel,
+            mesh::{layer::TypedLayerElementHandle, TriangleVertices},
+            texture::WrapMode,
+        },
         object::{self, model::TypedModelHandle, TypedObjectHandle},
         Document,
     },
@@ -28,10 +42,22 @@ const FBX_SCALE: f64 = 100.0;
 pub struct Loader<'b, 'w> {
     scene: Scene,
     load_context: &'b mut LoadContext<'w>,
+    suported_compressed_formats: CompressedImageFormats,
 }
 
-#[derive(Default)]
-pub struct FbxLoader;
+pub struct FbxLoader {
+    supported: CompressedImageFormats,
+}
+impl FromWorld for FbxLoader {
+    fn from_world(world: &mut World) -> Self {
+        let supported = match world.get_resource::<RenderDevice>() {
+            Some(render_device) => CompressedImageFormats::from_features(render_device.features()),
+
+            None => CompressedImageFormats::all(),
+        };
+        Self { supported }
+    }
+}
 impl AssetLoader for FbxLoader {
     fn load<'a>(
         &'a self,
@@ -44,17 +70,15 @@ impl AssetLoader for FbxLoader {
             let maybe_doc =
                 AnyDocument::from_seekable_reader(reader).expect("Failed to load document");
             if let AnyDocument::V7400(_ver, doc) = maybe_doc {
-                let loader = Loader::new(load_context);
+                let loader = Loader::new(self.supported, load_context);
                 let potential_error = loader
                     .load(*doc)
+                    .await
                     .with_context(|| format!("failed to load {:?}", load_context.path()));
-                match potential_error {
-                    Err(err) => {
-                        error!("{err:?}");
-                        Ok(())
-                    }
-                    Ok(()) => Ok(()),
+                if let Err(err) = potential_error {
+                    error!("{err:?}");
                 }
+                Ok(())
             } else {
                 Err(anyhow!("TODO: better error handling in fbx loader"))
             }
@@ -66,19 +90,18 @@ impl AssetLoader for FbxLoader {
 }
 
 impl<'b, 'w> Loader<'b, 'w> {
-    /// Creates a new `Loader`.
-    fn new(load_context: &'b mut LoadContext<'w>) -> Self {
+    fn new(formats: CompressedImageFormats, load_context: &'b mut LoadContext<'w>) -> Self {
         Self {
             scene: Default::default(),
             load_context,
+            suported_compressed_formats: formats,
         }
     }
 
-    /// Loads the document.
-    fn load(mut self, doc: Document) -> anyhow::Result<()> {
+    async fn load(mut self, doc: Document) -> anyhow::Result<()> {
         for obj in doc.objects() {
             if let TypedObjectHandle::Model(TypedModelHandle::Mesh(mesh)) = obj.get_typed() {
-                self.load_mesh(mesh)?;
+                self.load_mesh(mesh).await?;
             }
         }
         let scene = self.scene;
@@ -88,11 +111,10 @@ impl<'b, 'w> Loader<'b, 'w> {
         Ok(())
     }
 
-    /// Loads the geometry.
     fn load_bevy_mesh(
         &mut self,
         mesh_obj: object::geometry::MeshHandle,
-        _num_materials: usize,
+        num_materials: usize,
     ) -> anyhow::Result<Handle<BevyMesh>> {
         debug!("Loading geometry mesh: {:?}", mesh_obj);
 
@@ -193,6 +215,8 @@ impl<'b, 'w> Loader<'b, 'w> {
             VertexAttributeValues::Float32x3(normals),
         );
         mesh.set_indices(Some(Indices::U32(indices)));
+        // let tangents = generate_tangents_for_mesh(&mesh)?;
+        // mesh.insert_attribute(BevyMesh::ATTRIBUTE_TANGENT, tangents);
 
         let label = match mesh_obj.name() {
             Some(name) if !name.is_empty() => format!("FbxMesh@{name}/Primitive"),
@@ -207,10 +231,9 @@ impl<'b, 'w> Loader<'b, 'w> {
         Ok(handle)
     }
 
-    /// Loads the mesh.
-    fn load_mesh(
+    async fn load_mesh(
         &mut self,
-        mesh_obj: object::model::MeshHandle,
+        mesh_obj: object::model::MeshHandle<'_>,
     ) -> anyhow::Result<Handle<FbxMesh>> {
         let label = if let Some(name) = mesh_obj.name() {
             format!("FbxMesh@{name}")
@@ -222,6 +245,20 @@ impl<'b, 'w> Loader<'b, 'w> {
 
         let bevy_obj = mesh_obj.geometry().context("Failed to get geometry")?;
 
+        // TODO: this sucks, but necessary because of `async` `read_asset_bytes` call in d
+        // `load_video_clip`  that virally infect everything.
+        // This can't even be ran in parallel due to deduplication
+        let mut materials = HashSet::new();
+        for mat in mesh_obj.materials() {
+            let mat = self.load_material(mat).await;
+            let mat = mat.context("Failed to load materials for mesh")?;
+            materials.insert(mat);
+        }
+        // TODO
+        // How does FBX materials work? See `convert_vertex` in fyrox/resource/fbx/mod.rs
+        // It seems they assign multiple textures to the same mesh, and provide a list
+        // of vertices in the mesh that it accounts for
+
         let mesh_handle = self
             .load_bevy_mesh(bevy_obj, 0)
             .context("Failed to load geometry mesh")?;
@@ -229,7 +266,7 @@ impl<'b, 'w> Loader<'b, 'w> {
         let mesh = FbxMesh {
             name: mesh_obj.name().map(Into::into),
             bevy_mesh_handle: mesh_handle,
-            materials: Vec::new(),
+            materials,
         };
 
         let mesh_handle = self
@@ -239,5 +276,145 @@ impl<'b, 'w> Loader<'b, 'w> {
 
         self.scene.add_mesh(mesh_handle.clone());
         Ok(mesh_handle)
+    }
+
+    async fn load_video_clip(
+        &mut self,
+        video_clip_obj: object::video::ClipHandle<'_>,
+    ) -> anyhow::Result<Image> {
+        debug!("Loading texture image: {:?}", video_clip_obj);
+
+        let relative_filename = video_clip_obj
+            .relative_filename()
+            .context("Failed to get relative filename of texture image")?;
+        trace!("Relative filename: {:?}", relative_filename);
+        let file_ext = Path::new(&relative_filename)
+            .extension()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_ascii_lowercase();
+        let image: Vec<u8> = if let Some(content) = video_clip_obj.content() {
+            // TODO: the clone here is absolutely unnecessary, but there
+            // is no way to reconciliate its lifetime with the other branch of
+            // this if/else
+            content.to_vec()
+        } else {
+            let parent = self.load_context.path().parent().unwrap();
+            let image_path = parent.join(relative_filename);
+            self.load_context.read_asset_bytes(image_path).await?
+        };
+        let is_srgb = false; // TODO
+        let image = Image::from_buffer(
+            &image,
+            ImageType::Extension(&file_ext),
+            self.suported_compressed_formats,
+            is_srgb,
+        );
+        let image = image.context("Failed to read image buffer data")?;
+        debug!("Successfully loaded texture image: {:?}", video_clip_obj);
+        Ok(image)
+    }
+
+    async fn load_texture(
+        &mut self,
+        texture_obj: object::texture::TextureHandle<'_>,
+    ) -> anyhow::Result<Handle<Image>> {
+        let label = match texture_obj.name() {
+            Some(name) if !name.is_empty() => format!("FbxTexture@{name}"),
+            _ => format!("FbxTexture{}", texture_obj.object_id().raw()),
+        };
+        if let Some(handle) = self.scene.textures.get(&label) {
+            trace!("already encountered texture: {label}, skipping");
+            return Ok(handle.clone_weak());
+        }
+
+        debug!("Loading texture: {:?}", label);
+
+        let properties = texture_obj.properties();
+        let address_mode_u = {
+            let val = properties
+                .wrap_mode_u_or_default()
+                .context("Failed to load wrap mode for U axis")?;
+            match val {
+                WrapMode::Repeat => AddressMode::Repeat,
+                WrapMode::Clamp => AddressMode::ClampToEdge,
+            }
+        };
+        let address_mode_v = {
+            let val = properties
+                .wrap_mode_v_or_default()
+                .context("Failed to load wrap mode for V axis")?;
+            match val {
+                WrapMode::Repeat => AddressMode::Repeat,
+                WrapMode::Clamp => AddressMode::ClampToEdge,
+            }
+        };
+        let video_clip_obj = texture_obj
+            .video_clip()
+            .ok_or_else(|| anyhow!("No image data for texture object: {:?}", label))?;
+        let image: Result<Image, anyhow::Error> = self.load_video_clip(video_clip_obj).await;
+        let mut image = image.context("Failed to load texture image")?;
+
+        image.sampler_descriptor = SamplerDescriptor {
+            address_mode_u,
+            address_mode_v,
+            ..Default::default()
+        };
+
+        let handle = self
+            .load_context
+            .set_labeled_asset(&label, LoadedAsset::new(image));
+        debug!("Successfully loaded texture: {:?}", label);
+        self.scene.textures.insert(label, handle.clone());
+        Ok(handle)
+    }
+
+    async fn load_material(
+        &mut self,
+        material_obj: object::material::MaterialHandle<'_>,
+    ) -> anyhow::Result<Handle<StandardMaterial>> {
+        let label = match material_obj.name() {
+            Some(name) if !name.is_empty() => format!("FbxMaterial@{name}"),
+            _ => format!("FbxMaterial{}", material_obj.object_id().raw()),
+        };
+        if let Some(handle) = self.scene.materials.get(&label) {
+            trace!("already encountered material: {label}, skipping");
+            return Ok(handle.clone_weak());
+        }
+
+        debug!("Loading material: {:?}", material_obj);
+
+        let texture = material_obj
+            .transparent_texture()
+            .or_else(|| material_obj.diffuse_texture());
+        let texture = match texture {
+            Some(texture) => Some({
+                let texture: Result<_, anyhow::Error> = self.load_texture(texture).await;
+                texture.context("Failed to load diffuse texture")?
+            }),
+            None => None,
+        };
+
+        let properties = material_obj.properties();
+        let shading_model = properties
+            .shading_model_or_default()
+            .context("Failed to get shading model")?;
+        let mut material = match shading_model {
+            ShadingModel::Lambert | ShadingModel::Phong => {
+                // TODO: convert shading model to PBR, see
+                // https://github.com/Sagoia/FBX2glTF/blob/dc300136c080c2f206b447ed15fb73e942653120/src/gltf/Raw2Gltf.cpp#L255
+                // and following code
+                StandardMaterial::default()
+            }
+            v => bail!("Unknown shading model: {:?}", v),
+        };
+        material.base_color_texture = texture;
+        let handle = self
+            .load_context
+            .set_labeled_asset(&label, LoadedAsset::new(material));
+        debug!("Successfully loaded material: {:?}", label);
+        self.scene.materials.insert(label, handle.clone());
+        Ok(handle)
     }
 }

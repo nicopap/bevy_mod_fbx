@@ -39,7 +39,7 @@ Controls:
         brightness: 1.0 / 5.0f32,
     })
     .insert_resource(bevy::log::LogSettings {
-        level: bevy::log::Level::INFO,
+        level: bevy::log::Level::DEBUG,
         filter: "wgpu=warn,bevy_ecs=info,gilrs=info,bevy_fbx=debug".to_string(),
     })
     .insert_resource(AssetServerSettings {
@@ -76,7 +76,7 @@ fn check_scene(
         // try
         match (|| {
             let scene = scenes.get(&handle.unwrap().handle)?;
-            // println!("{scene:#?}");
+            println!("{scene:#?}");
             // let fbx_mesh = meshes.get(fbx_mesh_handle.clone_weak())?;
             // println!("fbx mesh: {:?}", fbx_mesh.indices());
             for fbx_mesh_handle in scene.bevy_meshes.keys() {

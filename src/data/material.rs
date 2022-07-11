@@ -2,15 +2,11 @@
 
 use rgb::RGB;
 
-use super::scene::TextureIndex;
-
 /// Material.
 #[derive(Debug, Clone)]
 pub struct Material {
     /// Name.
     pub name: Option<String>,
-    /// Texture index.
-    pub diffuse_texture: Option<TextureIndex>,
     /// Shading parameters.
     pub data: ShadingData,
 }
