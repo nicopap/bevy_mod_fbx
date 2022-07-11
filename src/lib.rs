@@ -1,7 +1,7 @@
 use bevy_app::prelude::{App, Plugin};
 use bevy_asset::AddAsset;
 
-pub use data::mesh::Mesh as FbxMesh;
+pub use data::mesh::FbxMesh;
 pub use data::scene::Scene as FbxScene;
 pub use loader::FbxLoader;
 

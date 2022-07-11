@@ -4,14 +4,9 @@
 //! replacing the path as appropriate.
 //! With no arguments it will load the `FieldHelmet` fbx model from the repository assets subdirectory.
 
-use bevy::{
-    asset::AssetServerSettings,
-    input::mouse::MouseMotion,
-    math::Vec3A,
-    prelude::*,
-    render::primitives::{Aabb, Sphere},
-};
+use bevy::{asset::AssetServerSettings, input::mouse::MouseMotion, prelude::*};
 use bevy_fbx::{FbxPlugin, FbxScene};
+use bevy_inspector_egui::WorldInspectorPlugin;
 
 use std::f32::consts::TAU;
 
@@ -55,10 +50,11 @@ Controls:
         ..default()
     })
     .add_plugins(DefaultPlugins)
+    .add_plugin(WorldInspectorPlugin::new())
     .add_plugin(FbxPlugin)
     .add_startup_system(setup)
-    .add_system_to_stage(CoreStage::PreUpdate, setup_scene_after_load)
     .add_system(update_lights)
+    .add_system(check_scene)
     .add_system(camera_controller);
 
     app.run();
@@ -66,8 +62,23 @@ Controls:
 
 struct SceneHandle {
     handle: Handle<FbxScene>,
-    is_loaded: bool,
-    has_light: bool,
+}
+fn check_scene(
+    mut commands: Commands,
+    scenes: Res<Assets<FbxScene>>,
+    handle: Option<Res<SceneHandle>>,
+    input: Res<Input<KeyCode>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    if input.just_pressed(KeyCode::A) {
+        let scene = scenes.get(&handle.unwrap().handle).unwrap();
+        println!("{scene:#?}");
+        commands.spawn_bundle(PbrBundle {
+            mesh: scene.bevy_meshes.iter().next().unwrap().0.clone_weak(),
+            material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
+            ..default()
+        });
+    }
 }
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -75,87 +86,14 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         .nth(1)
         .expect("Provide FBX file path from CARGO_DIR directory");
     info!("Loading {}", scene_path);
+    commands.spawn_bundle(PerspectiveCameraBundle {
+        transform: Transform::from_xyz(10.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
+        ..default()
+    });
+
     commands.insert_resource(SceneHandle {
         handle: asset_server.load(&scene_path),
-        is_loaded: false,
-        has_light: false,
     });
-}
-
-fn setup_scene_after_load(
-    mut commands: Commands,
-    mut setup: Local<bool>,
-    mut scene_handle: ResMut<SceneHandle>,
-    meshes: Query<(&GlobalTransform, Option<&Aabb>), With<Handle<Mesh>>>,
-) {
-    if scene_handle.is_loaded && !*setup {
-        *setup = true;
-        // Find an approximate bounding box of the scene from its meshes
-        if meshes.iter().any(|(_, maybe_aabb)| maybe_aabb.is_none()) {
-            return;
-        }
-
-        let mut min = Vec3A::splat(f32::MAX);
-        let mut max = Vec3A::splat(f32::MIN);
-        for (transform, maybe_aabb) in meshes.iter() {
-            let aabb = maybe_aabb.unwrap();
-            // If the Aabb had not been rotated, applying the non-uniform scale would produce the
-            // correct bounds. However, it could very well be rotated and so we first convert to
-            // a Sphere, and then back to an Aabb to find the conservative min and max points.
-            let sphere = Sphere {
-                center: Vec3A::from(transform.mul_vec3(Vec3::from(aabb.center))),
-                radius: (Vec3A::from(transform.scale) * aabb.half_extents).length(),
-            };
-            let aabb = Aabb::from(sphere);
-            min = min.min(aabb.min());
-            max = max.max(aabb.max());
-        }
-
-        let size = (max - min).length();
-        let aabb = Aabb::from_min_max(Vec3::from(min), Vec3::from(max));
-
-        info!("Spawning a controllable 3D perspective camera");
-        commands
-            .spawn_bundle(PerspectiveCameraBundle {
-                transform: Transform::from_translation(
-                    Vec3::from(aabb.center) + size * Vec3::new(0.5, 0.25, 0.5),
-                )
-                .looking_at(Vec3::from(aabb.center), Vec3::Y),
-                ..default()
-            })
-            .insert(CameraController::default());
-
-        // Spawn a default light if the scene does not have one
-        if !scene_handle.has_light {
-            let sphere = Sphere {
-                center: aabb.center,
-                radius: aabb.half_extents.length(),
-            };
-            let aabb = Aabb::from(sphere);
-            let min = aabb.min();
-            let max = aabb.max();
-
-            info!("Spawning a directional light");
-            commands.spawn_bundle(DirectionalLightBundle {
-                directional_light: DirectionalLight {
-                    shadow_projection: OrthographicProjection {
-                        left: min.x,
-                        right: max.x,
-                        bottom: min.y,
-                        top: max.y,
-                        near: min.z,
-                        far: max.z,
-                        ..default()
-                    },
-                    shadows_enabled: false,
-                    ..default()
-                },
-                ..default()
-            });
-
-            scene_handle.has_light = true;
-        }
-    }
 }
 
 const SCALE_STEP: f32 = 0.1;

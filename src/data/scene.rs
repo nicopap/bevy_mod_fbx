@@ -1,19 +1,19 @@
 //! Scene.
 
-use super::{material::Material, mesh::Mesh, texture::Texture};
+use super::{material::Material, mesh::FbxMesh, texture::Texture};
 use bevy_asset::Handle;
 use bevy_reflect::TypeUuid;
 use bevy_render::mesh::Mesh as BevyMesh;
-use bevy_utils::HashSet;
+use bevy_utils::{HashMap, HashSet};
 
 #[derive(Default, Debug, Clone, TypeUuid)]
 #[uuid = "e87d49b6-8d6a-43c7-bb33-5315db8516eb"]
 pub struct Scene {
-    name: Option<String>,
-    pub(crate) bevy_meshes: HashSet<Handle<BevyMesh>>,
-    materials: Vec<Material>,
-    pub(crate) meshes: HashSet<Handle<Mesh>>,
-    textures: Vec<Texture>,
+    pub name: Option<String>,
+    pub bevy_meshes: HashMap<Handle<BevyMesh>, String>,
+    pub materials: Vec<Material>,
+    pub meshes: HashSet<Handle<FbxMesh>>,
+    pub textures: Vec<Texture>,
 }
 
 impl Scene {
@@ -47,7 +47,7 @@ impl Scene {
     }
 
     /// Add a mesh.
-    pub(crate) fn add_mesh(&mut self, mesh: Handle<Mesh>) {
+    pub(crate) fn add_mesh(&mut self, mesh: Handle<FbxMesh>) {
         self.meshes.insert(mesh);
     }
 

@@ -4,13 +4,9 @@ use std::{collections::HashMap, path::Path};
 
 use anyhow::{anyhow, bail, Context};
 use bevy_asset::{AssetLoader, Handle, LoadContext, LoadedAsset};
-use bevy_ecs::prelude::World;
-use bevy_hierarchy::BuildWorldChildren;
 use bevy_log::{debug, error, trace};
 use bevy_math::{DVec2, DVec3};
-use bevy_pbr::PbrBundle;
 use bevy_render::mesh::{Indices, Mesh as BevyMesh, PrimitiveTopology, VertexAttributeValues};
-use bevy_transform::TransformBundle;
 // use cgmath::{Point2, Point3, Vector3};
 use fbxcel_dom::{
     any::AnyDocument,
@@ -27,7 +23,7 @@ use rgb::ComponentMap;
 
 use crate::data::{
     material::{LambertData, Material, ShadingData},
-    mesh::Mesh as FbxMesh,
+    mesh::FbxMesh,
     scene::{MaterialIndex, Scene, TextureIndex},
     texture::{Texture, WrapMode},
 };
@@ -58,7 +54,7 @@ impl AssetLoader for FbxLoader {
             if let AnyDocument::V7400(_ver, doc) = maybe_doc {
                 let loader = Loader::new(load_context);
                 let potential_error = loader
-                    .load_scene(*doc)
+                    .load(*doc)
                     .with_context(|| format!("failed to load {:?}", load_context.path()));
                 match potential_error {
                     Err(err) => {
@@ -88,39 +84,25 @@ impl<'b, 'w> Loader<'b, 'w> {
         }
     }
 
-    fn load_scene(self, doc: Document) -> anyhow::Result<()> {
-        let scene = self.load(doc)?;
-        let mut world = World::default();
-        world
-            .spawn()
-            .insert_bundle(TransformBundle::identity())
-            .with_children(|parent| {
-                for mesh in &scene.bevy_meshes {
-                    parent.spawn_bundle(PbrBundle {
-                        mesh: mesh.clone(),
-                        ..Default::default()
-                    });
-                }
-            });
-        Ok(())
-    }
-
     /// Loads the document.
-    fn load(mut self, doc: Document) -> anyhow::Result<Scene> {
+    fn load(mut self, doc: Document) -> anyhow::Result<()> {
         for obj in doc.objects() {
             if let TypedObjectHandle::Model(TypedModelHandle::Mesh(mesh)) = obj.get_typed() {
                 self.load_mesh(mesh)?;
             }
         }
-
-        Ok(self.scene)
+        let scene = self.scene;
+        let load_context = self.load_context;
+        load_context.set_labeled_asset("Scene", LoadedAsset::new(scene));
+        debug!("Successfully loaded scene {:?}#Scene", load_context.path());
+        Ok(())
     }
 
     /// Loads the geometry.
     fn load_bevy_mesh(
         &mut self,
         mesh_obj: object::geometry::MeshHandle,
-        num_materials: usize,
+        _num_materials: usize,
     ) -> anyhow::Result<Handle<BevyMesh>> {
         debug!("Loading geometry mesh: {:?}", mesh_obj);
 
@@ -196,33 +178,33 @@ impl<'b, 'w> Loader<'b, 'w> {
         };
 
         let _indices_per_material = {
-            let mut indices_per_material = vec![Vec::new(); num_materials];
-            let materials = layer
-                .layer_element_entries()
-                .find_map(|entry| match entry.typed_layer_element() {
-                    Ok(TypedLayerElementHandle::Material(handle)) => Some(handle),
-                    _ => None,
-                })
-                .ok_or_else(|| anyhow!("Materials not found for mesh {:?}", mesh_obj))?
-                .materials()
-                .context("Failed to get materials")?;
-            for tri_vi in triangle_pvi_indices.triangle_vertex_indices() {
-                let local_material_index = materials
-                    .material_index(&triangle_pvi_indices, tri_vi)
-                    .context("Failed to get mesh-local material index")?
-                    .to_u32();
-                indices_per_material
-                    .get_mut(local_material_index as usize)
-                    .ok_or_else(|| {
-                        anyhow!(
-                            "FbxMesh-local material index out of range: num_materials={:?}, got={:?}",
-                            num_materials,
-                            local_material_index
-                        )
-                    })?
-                    .push(tri_vi.to_usize() as u32);
-            }
-            indices_per_material
+            // let mut indices_per_material = vec![Vec::new(); num_materials];
+            // let materials = layer
+            //     .layer_element_entries()
+            //     .find_map(|entry| match entry.typed_layer_element() {
+            //         Ok(TypedLayerElementHandle::Material(handle)) => Some(handle),
+            //         _ => None,
+            //     })
+            //     .ok_or_else(|| anyhow!("Materials not found for mesh {:?}", mesh_obj))?
+            //     .materials()
+            //     .context("Failed to get materials")?;
+            // for tri_vi in triangle_pvi_indices.triangle_vertex_indices() {
+            //     let local_material_index = materials
+            //         .material_index(&triangle_pvi_indices, tri_vi)
+            //         .context("Failed to get mesh-local material index")?
+            //         .to_u32();
+            //     indices_per_material
+            //         .get_mut(local_material_index as usize)
+            //         .ok_or_else(|| {
+            //             anyhow!(
+            //                 "FbxMesh-local material index out of range: num_materials={:?}, got={:?}",
+            //                 num_materials,
+            //                 local_material_index
+            //             )
+            //         })?
+            //         .push(tri_vi.to_usize() as u32);
+            // }
+            // indices_per_material
         };
 
         let indices: Vec<_> = triangle_pvi_indices
@@ -231,7 +213,7 @@ impl<'b, 'w> Loader<'b, 'w> {
             .map(|t| t.to_u32())
             .collect();
         if uv.len() != positions.len() || uv.len() != normals.len() || uv.len() != indices.len() {
-            panic!(
+            bail!(
                 "mismatched length of buffers: pos{} uv{} normals{} indices{}",
                 positions.len(),
                 uv.len(),
@@ -257,16 +239,17 @@ impl<'b, 'w> Loader<'b, 'w> {
         // TODO: generate tangents in bevy 0.8
         // mesh.generate_tangents()?;
 
-        debug!("Successfully loaded geometry mesh: {:?}", mesh_obj);
-
-        let label = if let Some(name) = mesh_obj.name() {
-            format!("FbxMesh@{name}/Primitive")
-        } else {
-            format!("FbxMesh{}/Primitive", mesh_obj.object_id().raw())
+        let label = match mesh_obj.name() {
+            Some(name) if !name.is_empty() => format!("FbxMesh@{name}/Primitive"),
+            _ => format!("FbxMesh{}/Primitive", mesh_obj.object_id().raw()),
         };
-        Ok(self
+        debug!("Successfully loaded geometry mesh: {label}");
+
+        let handle = self
             .load_context
-            .set_labeled_asset(&label, LoadedAsset::new(mesh)))
+            .set_labeled_asset(&label, LoadedAsset::new(mesh));
+        self.scene.bevy_meshes.insert(handle.clone(), label);
+        Ok(handle)
     }
 
     /// Loads the mesh.
@@ -303,7 +286,7 @@ impl<'b, 'w> Loader<'b, 'w> {
         let mesh_handle = self
             .load_context
             .set_labeled_asset(&label, LoadedAsset::new(mesh));
-        debug!("Successfully loaded mesh: {label}");
+        debug!("Successfully loaded FBX mesh: {label}");
 
         self.scene.add_mesh(mesh_handle.clone());
         Ok(mesh_handle)

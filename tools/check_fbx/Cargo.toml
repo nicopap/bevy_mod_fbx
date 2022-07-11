@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 bevy_fbx = { path = "../../", version = "0.1.0-dev" }
+bevy-inspector-egui = "0.11"
 env_logger = "0.9.0"
 fbxcel-dom = "0.0.7"
 bevy = "0.7"
