@@ -1,14 +1,22 @@
-#![allow(unused)] // Remove later.
+use bevy_app::prelude::{App, Plugin};
+use bevy_asset::AddAsset;
 
-use bevy_app::{App, Plugin};
-use type_uuid::TypeUuid;
+pub use data::mesh::Mesh as FbxMesh;
+pub use data::scene::Scene as FbxScene;
+pub use loader::FbxLoader;
 
-mod data;
-mod loader;
-mod utils;
+pub(crate) mod data;
+pub(crate) mod loader;
+pub(crate) mod utils;
 
+/// Adds support for FBX file loading to the app.
+#[derive(Default)]
 pub struct FbxPlugin;
 
 impl Plugin for FbxPlugin {
-    fn build(&self, app: &mut App) {}
+    fn build(&self, app: &mut App) {
+        app.init_asset_loader::<FbxLoader>()
+            .add_asset::<FbxMesh>()
+            .add_asset::<FbxScene>();
+    }
 }

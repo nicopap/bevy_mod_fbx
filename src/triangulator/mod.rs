@@ -1,1 +1,1 @@
-mod triangulate;
+pub(crate) mod triangulate;

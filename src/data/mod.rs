@@ -1,5 +1,5 @@
-mod geometry;
-mod material;
-mod mesh;
-mod scene;
-mod texture;
+pub mod geometry;
+pub mod material;
+pub mod mesh;
+pub mod scene;
+pub mod texture;

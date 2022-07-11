@@ -1,19 +1,18 @@
 //! Scene.
 
-use super::{geometry::GeoMesh, material::Material, mesh::Mesh, texture::Texture};
+use super::{material::Material, mesh::Mesh, texture::Texture};
+use bevy_asset::Handle;
+use bevy_reflect::TypeUuid;
+use bevy_render::mesh::Mesh as BevyMesh;
+use bevy_utils::HashSet;
 
-/// Scene.
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, TypeUuid)]
+#[uuid = "e87d49b6-8d6a-43c7-bb33-5315db8516eb"]
 pub struct Scene {
-    /// Scene name.
     name: Option<String>,
-    /// Geometry mesh.
-    geometry_meshes: Vec<GeoMesh>,
-    /// Materials.
+    pub(crate) bevy_meshes: HashSet<Handle<BevyMesh>>,
     materials: Vec<Material>,
-    /// Meshes.
-    meshes: Vec<Mesh>,
-    /// Textures.
+    pub(crate) meshes: HashSet<Handle<Mesh>>,
     textures: Vec<Texture>,
 }
 
@@ -26,25 +25,6 @@ impl Scene {
     /// Sets the scene name.
     pub fn set_name(&mut self, name: impl Into<Option<String>>) {
         self.name = name.into();
-    }
-
-    /// Add a geometry mesh.
-    pub(crate) fn add_geometry_mesh(&mut self, mesh: GeoMesh) -> GeometryMeshIndex {
-        let index = GeometryMeshIndex::new(self.meshes.len());
-
-        self.geometry_meshes.push(mesh);
-
-        index
-    }
-
-    /// Returns an iterator of geometry meshes.
-    pub fn geometry_meshes(&self) -> impl Iterator<Item = &GeoMesh> {
-        self.geometry_meshes.iter()
-    }
-
-    /// Returns a reference to the geometry mesh.
-    pub fn geometry_mesh(&self, i: GeometryMeshIndex) -> Option<&GeoMesh> {
-        self.geometry_meshes.get(i.to_usize())
     }
 
     /// Add a material.
@@ -67,22 +47,8 @@ impl Scene {
     }
 
     /// Add a mesh.
-    pub(crate) fn add_mesh(&mut self, mesh: Mesh) -> MeshIndex {
-        let index = MeshIndex::new(self.meshes.len());
-
-        self.meshes.push(mesh);
-
-        index
-    }
-
-    /// Returns an iterator of meshes.
-    pub fn meshes(&self) -> impl Iterator<Item = &Mesh> {
-        self.meshes.iter()
-    }
-
-    /// Returns a reference to the mesh.
-    pub fn mesh(&self, i: MeshIndex) -> Option<&Mesh> {
-        self.meshes.get(i.to_usize())
+    pub(crate) fn add_mesh(&mut self, mesh: Handle<Mesh>) {
+        self.meshes.insert(mesh);
     }
 
     /// Add a texture.
@@ -111,49 +77,33 @@ macro_rules! define_index_type {
         $ty:ident;
     )*) => {
         $(
-            define_index_type! {
-                @single
-                $(#[$meta])*
-                $ty;
+            $(#[$meta])*
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+            pub struct $ty(u32);
+
+            impl $ty {
+                /// Creates a new index.
+                ///
+                /// # Panics
+                ///
+                /// Panics if the given index is larger than `std::u32::MAX`.
+                pub(crate) fn new(i: usize) -> Self {
+                    assert!(i <= std::u32::MAX as usize);
+                    Self(i as u32)
+                }
+
+                /// Retuns `usize` value.
+                pub fn to_usize(self) -> usize {
+                    self.0 as usize
+                }
             }
         )*
-    };
-    (
-        @single
-        $(#[$meta:meta])*
-        $ty:ident;
-    ) => {
-        $(#[$meta])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-        pub struct $ty(u32);
-
-        impl $ty {
-            /// Creates a new index.
-            ///
-            /// # Panics
-            ///
-            /// Panics if the given index is larger than `std::u32::MAX`.
-            pub(crate) fn new(i: usize) -> Self {
-                assert!(i <= std::u32::MAX as usize);
-
-                Self(i as u32)
-            }
-
-            /// Retuns `usize` value.
-            pub fn to_usize(self) -> usize {
-                self.0 as usize
-            }
-        }
     };
 }
 
 define_index_type! {
-    /// Geometry mesh index.
-    GeometryMeshIndex;
     /// Material index.
     MaterialIndex;
-    /// Mesh index.
-    MeshIndex;
     /// Texture index.
     TextureIndex;
 }
