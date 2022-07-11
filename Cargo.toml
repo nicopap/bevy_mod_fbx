@@ -16,7 +16,7 @@ image = "0.24.2"
 anyhow = "1.0.58"
 type-uuid = "0.1.2"
 glam = { version = "0.20", features = ["mint"] }
-# thiserror = "1.0.31"
+thiserror = "1.0"
 fbxcel-dom = "0.0.7"
 bevy_app = "0.7.0"
 bevy_asset = "0.7.0"
@@ -33,3 +33,4 @@ bevy_scene = "0.7.0"
 bevy_transform = "0.7.0"
 bevy_tasks = "0.7.0"
 bevy_utils = "0.7.0"
+bevy_mikktspace = { git = "https://github.com/bevyengine/bevy.git", rev = "bdef86ea6eae96383d7bbd4818797f7572572090", version = "0.8.0-dev" }

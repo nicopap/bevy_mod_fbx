@@ -28,7 +28,11 @@ use crate::data::{
     texture::{Texture, WrapMode},
 };
 
+use crate::tangents::generate_tangents_for_mesh;
 use crate::triangulator;
+
+/// How much to scale down FBX stuff.
+const FBX_SCALE: f64 = 100.0;
 
 // TODO: multiple scenes
 pub struct Loader<'b, 'w> {
@@ -121,7 +125,7 @@ impl<'b, 'w> Loader<'b, 'w> {
                 .control_point(cpi)
                 .ok_or_else(|| anyhow!("Failed to get control point: cpi={:?}", cpi))?;
             // TODO: probably a better conversion method here XD
-            Ok(DVec3::from(point).as_vec3().into())
+            Ok((DVec3::from(point) / FBX_SCALE).as_vec3().into())
         };
         let positions = triangle_pvi_indices
             .iter_control_point_indices()
@@ -212,6 +216,7 @@ impl<'b, 'w> Loader<'b, 'w> {
             .flatten()
             .map(|t| t.to_u32())
             .collect();
+        trace!("{:?}", indices);
         if uv.len() != positions.len() || uv.len() != normals.len() || uv.len() != indices.len() {
             bail!(
                 "mismatched length of buffers: pos{} uv{} normals{} indices{}",
@@ -236,8 +241,8 @@ impl<'b, 'w> Loader<'b, 'w> {
             VertexAttributeValues::Float32x3(normals),
         );
         mesh.set_indices(Some(Indices::U32(indices)));
-        // TODO: generate tangents in bevy 0.8
-        // mesh.generate_tangents()?;
+        let tangents = generate_tangents_for_mesh(&mesh)?;
+        mesh.insert_attribute(BevyMesh::ATTRIBUTE_TANGENT, tangents);
 
         let label = match mesh_obj.name() {
             Some(name) if !name.is_empty() => format!("FbxMesh@{name}/Primitive"),

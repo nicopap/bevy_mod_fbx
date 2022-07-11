@@ -67,17 +67,31 @@ fn check_scene(
     mut commands: Commands,
     scenes: Res<Assets<FbxScene>>,
     handle: Option<Res<SceneHandle>>,
-    input: Res<Input<KeyCode>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut already_spawned: Local<bool>,
+    meshes: Res<Assets<Mesh>>,
 ) {
-    if input.just_pressed(KeyCode::A) {
-        let scene = scenes.get(&handle.unwrap().handle).unwrap();
-        println!("{scene:#?}");
-        commands.spawn_bundle(PbrBundle {
-            mesh: scene.bevy_meshes.iter().next().unwrap().0.clone_weak(),
-            material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
-            ..default()
-        });
+    if !*already_spawned {
+        match (|| {
+            let scene = scenes.get(&handle.unwrap().handle)?;
+            println!("{scene:#?}");
+            let fbx_mesh_handle = scene.bevy_meshes.iter().next()?.0.clone_weak();
+            let standard_cube: Mesh = shape::Cube::new(1.0).into();
+            let fbx_mesh = meshes.get(fbx_mesh_handle.clone_weak())?;
+            println!("fbx mesh: {:?}", fbx_mesh.indices());
+            println!("std mesh: {:?}", standard_cube.indices());
+            commands.spawn_bundle(PbrBundle {
+                mesh: fbx_mesh_handle,
+                material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
+                ..default()
+            });
+            Some(())
+        })() {
+            Some(()) => {
+                *already_spawned = true;
+            }
+            _ => {}
+        }
     }
 }
 
@@ -86,10 +100,12 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         .nth(1)
         .expect("Provide FBX file path from CARGO_DIR directory");
     info!("Loading {}", scene_path);
-    commands.spawn_bundle(PerspectiveCameraBundle {
-        transform: Transform::from_xyz(10.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
-        ..default()
-    });
+    commands
+        .spawn_bundle(PerspectiveCameraBundle {
+            transform: Transform::from_xyz(10.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
+            ..default()
+        })
+        .insert(CameraController::default());
 
     commands.insert_resource(SceneHandle {
         handle: asset_server.load(&scene_path),
