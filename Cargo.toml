@@ -33,4 +33,3 @@ bevy_scene = "0.7.0"
 bevy_transform = "0.7.0"
 bevy_tasks = "0.7.0"
 bevy_utils = "0.7.0"
-bevy_mikktspace = { git = "https://github.com/bevyengine/bevy.git", rev = "bdef86ea6eae96383d7bbd4818797f7572572090", version = "0.8.0-dev" }

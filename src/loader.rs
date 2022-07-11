@@ -1,34 +1,21 @@
 //! FBX v7400 support.
 
-use std::{collections::HashMap, path::Path};
-
 use anyhow::{anyhow, bail, Context};
 use bevy_asset::{AssetLoader, Handle, LoadContext, LoadedAsset};
 use bevy_log::{debug, error, trace};
 use bevy_math::{DVec2, DVec3};
 use bevy_render::mesh::{Indices, Mesh as BevyMesh, PrimitiveTopology, VertexAttributeValues};
-// use cgmath::{Point2, Point3, Vector3};
 use fbxcel_dom::{
     any::AnyDocument,
     v7400::{
-        data::{
-            material::ShadingModel, mesh::layer::TypedLayerElementHandle,
-            texture::WrapMode as RawWrapMode,
-        },
-        object::{self, model::TypedModelHandle, ObjectId, TypedObjectHandle},
+        data::mesh::layer::TypedLayerElementHandle,
+        object::{self, model::TypedModelHandle, TypedObjectHandle},
         Document,
     },
 };
-use rgb::ComponentMap;
 
-use crate::data::{
-    material::{LambertData, Material, ShadingData},
-    mesh::FbxMesh,
-    scene::{MaterialIndex, Scene, TextureIndex},
-    texture::{Texture, WrapMode},
-};
+use crate::data::{mesh::FbxMesh, scene::Scene};
 
-use crate::tangents::generate_tangents_for_mesh;
 use crate::triangulator;
 
 /// How much to scale down FBX stuff.
@@ -37,8 +24,6 @@ const FBX_SCALE: f64 = 100.0;
 // TODO: multiple scenes
 pub struct Loader<'b, 'w> {
     scene: Scene,
-    material_indices: HashMap<ObjectId, MaterialIndex>,
-    texture_indices: HashMap<ObjectId, TextureIndex>,
     load_context: &'b mut LoadContext<'w>,
 }
 
@@ -82,8 +67,6 @@ impl<'b, 'w> Loader<'b, 'w> {
     fn new(load_context: &'b mut LoadContext<'w>) -> Self {
         Self {
             scene: Default::default(),
-            material_indices: Default::default(),
-            texture_indices: Default::default(),
             load_context,
         }
     }
@@ -185,36 +168,6 @@ impl<'b, 'w> Loader<'b, 'w> {
                 .context("Failed to reconstruct UV vertices")?
         };
 
-        let _indices_per_material = {
-            // let mut indices_per_material = vec![Vec::new(); num_materials];
-            // let materials = layer
-            //     .layer_element_entries()
-            //     .find_map(|entry| match entry.typed_layer_element() {
-            //         Ok(TypedLayerElementHandle::Material(handle)) => Some(handle),
-            //         _ => None,
-            //     })
-            //     .ok_or_else(|| anyhow!("Materials not found for mesh {:?}", mesh_obj))?
-            //     .materials()
-            //     .context("Failed to get materials")?;
-            // for tri_vi in triangle_pvi_indices.triangle_vertex_indices() {
-            //     let local_material_index = materials
-            //         .material_index(&triangle_pvi_indices, tri_vi)
-            //         .context("Failed to get mesh-local material index")?
-            //         .to_u32();
-            //     indices_per_material
-            //         .get_mut(local_material_index as usize)
-            //         .ok_or_else(|| {
-            //             anyhow!(
-            //                 "FbxMesh-local material index out of range: num_materials={:?}, got={:?}",
-            //                 num_materials,
-            //                 local_material_index
-            //             )
-            //         })?
-            //         .push(tri_vi.to_usize() as u32);
-            // }
-            // indices_per_material
-        };
-
         trace!("{:?}", indices);
         if uv.len() != positions.len() || uv.len() != normals.len() || uv.len() != indices.len() {
             bail!(
@@ -240,8 +193,6 @@ impl<'b, 'w> Loader<'b, 'w> {
             VertexAttributeValues::Float32x3(normals),
         );
         mesh.set_indices(Some(Indices::U32(indices)));
-        let tangents = generate_tangents_for_mesh(&mesh)?;
-        mesh.insert_attribute(BevyMesh::ATTRIBUTE_TANGENT, tangents);
 
         let label = match mesh_obj.name() {
             Some(name) if !name.is_empty() => format!("FbxMesh@{name}/Primitive"),
@@ -271,12 +222,6 @@ impl<'b, 'w> Loader<'b, 'w> {
 
         let bevy_obj = mesh_obj.geometry().context("Failed to get geometry")?;
 
-        // let materials = mesh_obj
-        //     .materials()
-        //     .map(|material_obj| self.load_material(material_obj))
-        //     .collect::<anyhow::Result<Vec<_>>>()
-        //     .context("Failed to load materials for mesh")?;
-
         let mesh_handle = self
             .load_bevy_mesh(bevy_obj, 0)
             .context("Failed to load geometry mesh")?;
@@ -294,157 +239,5 @@ impl<'b, 'w> Loader<'b, 'w> {
 
         self.scene.add_mesh(mesh_handle.clone());
         Ok(mesh_handle)
-    }
-
-    // unused code, currently material not supported
-    /// Loads the texture.
-    fn load_texture(
-        &mut self,
-        texture_obj: object::texture::TextureHandle,
-        transparent: bool,
-    ) -> anyhow::Result<TextureIndex> {
-        if let Some(index) = self.texture_indices.get(&texture_obj.object_id()) {
-            return Ok(*index);
-        }
-
-        debug!("Loading texture: {:?}", texture_obj);
-
-        let properties = texture_obj.properties();
-        let wrap_mode_u = {
-            let val = properties
-                .wrap_mode_u_or_default()
-                .context("Failed to load wrap mode for U axis")?;
-            match val {
-                RawWrapMode::Repeat => WrapMode::Repeat,
-                RawWrapMode::Clamp => WrapMode::ClampToEdge,
-            }
-        };
-        let wrap_mode_v = {
-            let val = properties
-                .wrap_mode_v_or_default()
-                .context("Failed to load wrap mode for V axis")?;
-            match val {
-                RawWrapMode::Repeat => WrapMode::Repeat,
-                RawWrapMode::Clamp => WrapMode::ClampToEdge,
-            }
-        };
-        let video_clip_obj = texture_obj
-            .video_clip()
-            .ok_or_else(|| anyhow!("No image data for texture object: {:?}", texture_obj))?;
-        let image = self
-            .load_video_clip(video_clip_obj)
-            .context("Failed to load texture image")?;
-
-        let texture = Texture {
-            name: texture_obj.name().map(Into::into),
-            image,
-            transparent,
-            wrap_mode_u,
-            wrap_mode_v,
-        };
-
-        debug!("Successfully loaded texture: {:?}", texture_obj);
-
-        Ok(self.scene.add_texture(texture))
-    }
-
-    // unused code, currently material not supported
-    /// Loads the texture image.
-    fn load_video_clip(
-        &mut self,
-        video_clip_obj: object::video::ClipHandle,
-    ) -> anyhow::Result<image::DynamicImage> {
-        debug!("Loading texture image: {:?}", video_clip_obj);
-
-        let relative_filename = video_clip_obj
-            .relative_filename()
-            .context("Failed to get relative filename of texture image")?;
-        trace!("Relative filename: {:?}", relative_filename);
-        let file_ext = Path::new(&relative_filename)
-            .extension()
-            .and_then(std::ffi::OsStr::to_str)
-            .map(str::to_ascii_lowercase);
-        trace!("File extension: {:?}", file_ext);
-        let content = video_clip_obj
-            .content()
-            .ok_or_else(|| anyhow!("Currently, only embedded texture is supported"))?;
-        let image = match file_ext.as_ref().map(AsRef::as_ref) {
-            Some("tga") => image::load_from_memory_with_format(content, image::ImageFormat::Tga)
-                .context("Failed to load TGA image")?,
-            _ => image::load_from_memory(content).context("Failed to load image")?,
-        };
-
-        debug!("Successfully loaded texture image: {:?}", video_clip_obj);
-
-        Ok(image)
-    }
-
-    // unused code, currently material not supported
-    /// Loads the material.
-    fn load_material(
-        &mut self,
-        material_obj: object::material::MaterialHandle,
-    ) -> anyhow::Result<MaterialIndex> {
-        if let Some(index) = self.material_indices.get(&material_obj.object_id()) {
-            return Ok(*index);
-        }
-
-        debug!("Loading material: {:?}", material_obj);
-
-        let diffuse_texture = material_obj
-            .transparent_texture()
-            .map(|v| (true, v))
-            .or_else(|| material_obj.diffuse_texture().map(|v| (false, v)))
-            .map(|(transparent, texture_obj)| {
-                self.load_texture(texture_obj, transparent)
-                    .context("Failed to load diffuse texture")
-            })
-            .transpose()?;
-
-        let properties = material_obj.properties();
-        let shading_data = match properties
-            .shading_model_or_default()
-            .context("Failed to get shading model")?
-        {
-            ShadingModel::Lambert | ShadingModel::Phong => {
-                let ambient_color = properties
-                    .ambient_color_or_default()
-                    .context("Failed to get ambient color")?;
-                let ambient_factor = properties
-                    .ambient_factor_or_default()
-                    .context("Failed to get ambient factor")?;
-                let ambient = (ambient_color * ambient_factor).map(|v| v as f32);
-                let diffuse_color = properties
-                    .diffuse_color_or_default()
-                    .context("Failed to get diffuse color")?;
-                let diffuse_factor = properties
-                    .diffuse_factor_or_default()
-                    .context("Failed to get diffuse factor")?;
-                let diffuse = (diffuse_color * diffuse_factor).map(|v| v as f32);
-                let emissive_color = properties
-                    .emissive_color_or_default()
-                    .context("Failed to get emissive color")?;
-                let emissive_factor = properties
-                    .emissive_factor_or_default()
-                    .context("Failed to get emissive factor")?;
-                let emissive = (emissive_color * emissive_factor).map(|v| v as f32);
-                ShadingData::Lambert(LambertData {
-                    ambient,
-                    diffuse,
-                    emissive,
-                })
-            }
-            v => bail!("Unknown shading model: {:?}", v),
-        };
-
-        let material = Material {
-            name: material_obj.name().map(Into::into),
-            diffuse_texture,
-            data: shading_data,
-        };
-
-        debug!("Successfully loaded material: {:?}", material_obj);
-
-        Ok(self.scene.add_material(material))
     }
 }

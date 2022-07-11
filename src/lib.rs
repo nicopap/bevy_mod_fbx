@@ -7,7 +7,6 @@ pub use loader::FbxLoader;
 
 pub(crate) mod data;
 pub(crate) mod loader;
-pub(crate) mod tangents;
 pub(crate) mod utils;
 
 /// Adds support for FBX file loading to the app.
