@@ -169,7 +169,10 @@ impl<'b, 'w> Loader<'b, 'w> {
             .next()
             .ok_or_else(|| anyhow!("Failed to get layer"))?;
 
-        let indices_per_material = {
+        let indices_per_material = || -> Result<_, anyhow::Error> {
+            if num_materials == 0 {
+                return Ok(None);
+            };
             let mut indices_per_material = vec![Vec::new(); num_materials];
             let materials = layer
                 .layer_element_entries()
@@ -196,7 +199,7 @@ impl<'b, 'w> Loader<'b, 'w> {
                      })?
                      .push(tri_vi.to_usize() as u32);
             }
-            indices_per_material
+            Ok(Some(indices_per_material))
         };
         let normals = {
             let normals = layer
@@ -249,17 +252,22 @@ impl<'b, 'w> Loader<'b, 'w> {
             );
         }
 
-        trace!(
-            "{} different materials for this mesh",
-            indices_per_material.len()
-        );
         // TODO: remove unused vertices from partial models
         // this is complicated, as it also requires updating the indices.
 
         // A single mesh may have multiple materials applied to a different subset of
         // its vertices. In the following code, we create a unique mesh per material
         // we found.
-        let all_handles = indices_per_material
+        let all_indices = if let Some(per_materials) = indices_per_material()? {
+            per_materials
+        } else {
+            vec![triangle_pvi_indices
+                .triangle_vertex_indices()
+                .map(|t| t.to_usize() as u32)
+                .collect()]
+        };
+        trace!("{} different materials for this mesh", all_indices.len());
+        let all_handles = all_indices
             .into_iter()
             .enumerate()
             .map(|(i, indices)| {
@@ -294,6 +302,8 @@ impl<'b, 'w> Loader<'b, 'w> {
         Ok(all_handles)
     }
 
+    // Note: FBX meshes can have multiple different materials, it's not just a mesh.
+    // the FBX equivalent of a bevy Mesh is a geometry mesh
     async fn load_mesh(
         &mut self,
         mesh_obj: object::model::MeshHandle<'_>,
@@ -317,9 +327,13 @@ impl<'b, 'w> Loader<'b, 'w> {
             let mat = mat.context("Failed to load materials for mesh")?;
             materials.push(mat);
         }
+        let material_count = materials.len();
+        if material_count == 0 {
+            materials.push(Handle::default());
+        }
 
         let bevy_mesh_handles = self
-            .load_bevy_mesh(bevy_obj, materials.len())
+            .load_bevy_mesh(bevy_obj, material_count)
             .context("Failed to load geometry mesh")?;
 
         let mesh = FbxMesh {
