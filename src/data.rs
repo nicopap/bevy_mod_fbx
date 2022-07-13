@@ -1,7 +1,3 @@
-#![allow(dead_code)]
-//! Scene.
-
-use super::mesh::FbxMesh;
 use bevy::{
     asset::Handle,
     pbr::StandardMaterial,
@@ -10,6 +6,13 @@ use bevy::{
     utils::{HashMap, HashSet},
 };
 
+#[derive(Debug, Clone, TypeUuid)]
+#[uuid = "966d55c0-515b-4141-97a1-de30ac8ee44c"]
+pub struct FbxMesh {
+    pub name: Option<String>,
+    pub bevy_mesh_handles: Vec<Handle<BevyMesh>>,
+    pub materials: Vec<Handle<StandardMaterial>>,
+}
 #[derive(Default, Debug, Clone, TypeUuid)]
 #[uuid = "e87d49b6-8d6a-43c7-bb33-5315db8516eb"]
 pub struct FbxScene {
@@ -18,21 +21,4 @@ pub struct FbxScene {
     pub materials: HashMap<String, Handle<StandardMaterial>>,
     pub textures: HashMap<String, Handle<Image>>,
     pub meshes: HashSet<Handle<FbxMesh>>,
-}
-
-impl FbxScene {
-    /// Creates a new `Scene`.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Sets the scene name.
-    pub fn set_name(&mut self, name: impl Into<Option<String>>) {
-        self.name = name.into();
-    }
-
-    /// Add a mesh.
-    pub(crate) fn add_mesh(&mut self, mesh: Handle<FbxMesh>) {
-        self.meshes.insert(mesh);
-    }
 }

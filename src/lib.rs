@@ -1,6 +1,6 @@
 use bevy::prelude::{AddAsset, App, Plugin};
 
-pub use data::{mesh::FbxMesh, scene::FbxScene};
+pub use data::{FbxMesh, FbxScene};
 pub use loader::FbxLoader;
 
 pub(crate) mod data;

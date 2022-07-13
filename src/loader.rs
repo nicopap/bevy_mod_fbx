@@ -1,5 +1,3 @@
-//! FBX v7400 support.
-
 use std::path::Path;
 
 use anyhow::{anyhow, bail, Context};
@@ -29,7 +27,7 @@ use fbxcel_dom::{
 };
 
 use crate::{
-    data::{mesh::FbxMesh, scene::FbxScene},
+    data::{FbxMesh, FbxScene},
     utils::triangulate,
 };
 
@@ -334,7 +332,7 @@ impl<'b, 'w> Loader<'b, 'w> {
             .set_labeled_asset(&label, LoadedAsset::new(mesh.clone()));
         trace!("Successfully loaded FBX mesh: {label}");
 
-        self.scene.add_mesh(mesh_handle);
+        self.scene.meshes.insert(mesh_handle);
         Ok(mesh)
     }
 
