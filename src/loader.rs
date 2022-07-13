@@ -11,7 +11,6 @@ use bevy::{
     math::{DVec2, DVec3, Vec2},
     pbr::{PbrBundle, StandardMaterial},
     render::{
-        color::Color,
         mesh::{Indices, Mesh as BevyMesh, PrimitiveTopology, VertexAttributeValues},
         render_resource::{AddressMode, SamplerDescriptor},
         renderer::RenderDevice,
