@@ -107,6 +107,7 @@ impl<'b, 'w> Loader<'b, 'w> {
             .insert_bundle(TransformBundle::identity())
             .with_children(|parent| {
                 for mesh in meshes {
+                    // TODO: add the `Name` component when the mesh has a name
                     for (mat, mesh) in mesh.materials.iter().zip(&mesh.bevy_mesh_handles) {
                         parent.spawn_bundle(PbrBundle {
                             mesh: mesh.clone(),

@@ -15,7 +15,7 @@ Autodesk Filmbox (*.fbx) loader for Bevy Engine.
 
 - [X] Replace `cgmath` with `bevy_math`
 - [X] Write basic loader
-- [ ] Load textures
+- [X] Load textures
 - [ ] Convert lambert into PBR and load materials
 - [ ] Multiple scenes and entities
 - [ ] Add support for `bevy_animation`
