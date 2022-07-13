@@ -7,7 +7,7 @@
 
 use bevy::{
     asset::AssetServerSettings,
-    input::mouse::MouseMotion,
+    input::{mouse::MouseMotion, system::exit_on_esc_system},
     math::Vec3A,
     prelude::*,
     render::primitives::{Aabb, Sphere},
@@ -61,7 +61,8 @@ Controls:
     .add_plugin(FbxPlugin)
     .add_startup_system(setup)
     .add_system(update_lights)
-    .add_system(camera_controller);
+    .add_system(camera_controller)
+    .add_system(exit_on_esc_system);
 
     app.run();
 }
