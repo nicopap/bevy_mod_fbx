@@ -12,7 +12,7 @@ use bevy::{
 
 #[derive(Default, Debug, Clone, TypeUuid)]
 #[uuid = "e87d49b6-8d6a-43c7-bb33-5315db8516eb"]
-pub struct Scene {
+pub struct FbxScene {
     pub name: Option<String>,
     pub bevy_meshes: HashMap<Handle<BevyMesh>, String>,
     pub materials: HashMap<String, Handle<StandardMaterial>>,
@@ -20,7 +20,7 @@ pub struct Scene {
     pub meshes: HashSet<Handle<FbxMesh>>,
 }
 
-impl Scene {
+impl FbxScene {
     /// Creates a new `Scene`.
     pub fn new() -> Self {
         Self::default()

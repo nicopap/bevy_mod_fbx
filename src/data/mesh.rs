@@ -10,6 +10,6 @@ use bevy::{
 #[uuid = "966d55c0-515b-4141-97a1-de30ac8ee44c"]
 pub struct FbxMesh {
     pub name: Option<String>,
-    pub bevy_mesh_handle: Handle<BevyMesh>,
-    pub materials: HashSet<Handle<StandardMaterial>>,
+    pub bevy_mesh_handles: Vec<Handle<BevyMesh>>,
+    pub materials: Vec<Handle<StandardMaterial>>,
 }

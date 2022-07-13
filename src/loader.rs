@@ -4,17 +4,21 @@ use std::path::Path;
 
 use anyhow::{anyhow, bail, Context};
 use bevy::{
-    asset::{AssetLoader, Handle, LoadContext, LoadedAsset},
+    asset::{AssetLoader, BoxedFuture, Handle, LoadContext, LoadedAsset},
     ecs::world::{FromWorld, World},
+    hierarchy::BuildWorldChildren,
     log::{debug, error, trace},
     math::{DVec2, DVec3},
-    pbr::StandardMaterial,
+    pbr::{PbrBundle, StandardMaterial},
     render::{
+        color::Color,
         mesh::{Indices, Mesh as BevyMesh, PrimitiveTopology, VertexAttributeValues},
         render_resource::{AddressMode, SamplerDescriptor},
         renderer::RenderDevice,
         texture::{CompressedImageFormats, Image, ImageType},
     },
+    scene::Scene,
+    transform::TransformBundle,
     utils::HashSet,
 };
 use fbxcel_dom::{
@@ -31,7 +35,7 @@ use fbxcel_dom::{
 };
 
 use crate::{
-    data::{mesh::FbxMesh, scene::Scene},
+    data::{mesh::FbxMesh, scene::FbxScene},
     utils::triangulate,
 };
 
@@ -40,7 +44,7 @@ const FBX_SCALE: f64 = 100.0;
 
 // TODO: multiple scenes
 pub struct Loader<'b, 'w> {
-    scene: Scene,
+    scene: FbxScene,
     load_context: &'b mut LoadContext<'w>,
     suported_compressed_formats: CompressedImageFormats,
 }
@@ -99,15 +103,41 @@ impl<'b, 'w> Loader<'b, 'w> {
     }
 
     async fn load(mut self, doc: Document) -> anyhow::Result<()> {
+        let default_material = StandardMaterial::from(Color::rgb(0.8, 0.7, 0.6));
+        let default_material = self
+            .load_context
+            .set_labeled_asset("DefaultFbxMaterial", LoadedAsset::new(default_material));
+        let mut scene_world = World::default();
+        let mut meshes = Vec::new();
         for obj in doc.objects() {
             if let TypedObjectHandle::Model(TypedModelHandle::Mesh(mesh)) = obj.get_typed() {
-                self.load_mesh(mesh).await?;
+                meshes.push(self.load_mesh(mesh).await?);
             }
         }
+        scene_world
+            .spawn()
+            .insert_bundle(TransformBundle::identity())
+            .with_children(|parent| {
+                for mesh in meshes {
+                    for (mat, mesh) in mesh.materials.iter().zip(&mesh.bevy_mesh_handles) {
+                        parent.spawn_bundle(PbrBundle {
+                            mesh: mesh.clone(),
+                            material: mat.clone(),
+                            ..Default::default()
+                        });
+                    }
+                }
+            });
         let scene = self.scene;
         let load_context = self.load_context;
+        load_context.set_labeled_asset("FbxScene", LoadedAsset::new(scene));
+
+        let scene = Scene::new(scene_world);
         load_context.set_labeled_asset("Scene", LoadedAsset::new(scene));
-        debug!("Successfully loaded scene {:?}#Scene", load_context.path());
+        debug!(
+            "Successfully loaded scene {}#FbxScene",
+            load_context.path().to_string_lossy(),
+        );
         Ok(())
     }
 
@@ -115,7 +145,7 @@ impl<'b, 'w> Loader<'b, 'w> {
         &mut self,
         mesh_obj: object::geometry::MeshHandle,
         num_materials: usize,
-    ) -> anyhow::Result<Handle<BevyMesh>> {
+    ) -> anyhow::Result<Vec<Handle<BevyMesh>>> {
         debug!("Loading geometry mesh: {:?}", mesh_obj);
 
         let polygon_vertices = mesh_obj
@@ -124,10 +154,6 @@ impl<'b, 'w> Loader<'b, 'w> {
         let triangle_pvi_indices = polygon_vertices
             .triangulate_each(triangulate::triangulate)
             .context("Triangulation failed")?;
-        let indices: Vec<_> = triangle_pvi_indices
-            .triangle_vertex_indices()
-            .map(|t| t.to_usize() as u32)
-            .collect();
 
         // TODO this seems to duplicate vertices from neighboring triangles. We shouldn't
         // do that and instead set the indice attribute of the BevyMesh properly.
@@ -150,6 +176,35 @@ impl<'b, 'w> Loader<'b, 'w> {
             .next()
             .ok_or_else(|| anyhow!("Failed to get layer"))?;
 
+        let indices_per_material = {
+            let mut indices_per_material = vec![Vec::new(); num_materials];
+            let materials = layer
+                .layer_element_entries()
+                .find_map(|entry| match entry.typed_layer_element() {
+                    Ok(TypedLayerElementHandle::Material(handle)) => Some(handle),
+                    _ => None,
+                })
+                .ok_or_else(|| anyhow!("Materials not found for mesh {:?}", mesh_obj))?
+                .materials()
+                .context("Failed to get materials")?;
+            for tri_vi in triangle_pvi_indices.triangle_vertex_indices() {
+                let local_material_index = materials
+                    .material_index(&triangle_pvi_indices, tri_vi)
+                    .context("Failed to get mesh-local material index")?
+                    .to_u32();
+                indices_per_material
+                     .get_mut(local_material_index as usize)
+                     .ok_or_else(|| {
+                         anyhow!(
+                             "FbxMesh-local material index out of range: num_materials={:?}, got={:?}",
+                             num_materials,
+                             local_material_index
+                         )
+                     })?
+                     .push(tri_vi.to_usize() as u32);
+            }
+            indices_per_material
+        };
         let normals = {
             let normals = layer
                 .layer_element_entries()
@@ -190,51 +245,57 @@ impl<'b, 'w> Loader<'b, 'w> {
                 .context("Failed to reconstruct UV vertices")?
         };
 
-        trace!("{:?}", indices);
-        if uv.len() != positions.len() || uv.len() != normals.len() || uv.len() != indices.len() {
+        if uv.len() != positions.len() || uv.len() != normals.len() {
             bail!(
-                "mismatched length of buffers: pos{} uv{} normals{} indices{}",
+                "mismatched length of buffers: pos{} uv{} normals{}",
                 positions.len(),
                 uv.len(),
                 normals.len(),
-                indices.len()
             );
         }
 
-        let mut mesh = BevyMesh::new(PrimitiveTopology::TriangleList);
-        mesh.insert_attribute(
-            BevyMesh::ATTRIBUTE_POSITION,
-            VertexAttributeValues::Float32x3(positions),
-        );
-        mesh.insert_attribute(
-            BevyMesh::ATTRIBUTE_UV_0,
-            VertexAttributeValues::Float32x2(uv),
-        );
-        mesh.insert_attribute(
-            BevyMesh::ATTRIBUTE_NORMAL,
-            VertexAttributeValues::Float32x3(normals),
-        );
-        mesh.set_indices(Some(Indices::U32(indices)));
-        // let tangents = generate_tangents_for_mesh(&mesh)?;
-        // mesh.insert_attribute(BevyMesh::ATTRIBUTE_TANGENT, tangents);
+        let all_handles = indices_per_material
+            .into_iter()
+            .enumerate()
+            .map(|(i, indices)| {
+                trace!("{:?}", indices);
+                let mut mesh = BevyMesh::new(PrimitiveTopology::TriangleList);
+                mesh.insert_attribute(
+                    BevyMesh::ATTRIBUTE_POSITION,
+                    VertexAttributeValues::Float32x3(positions.clone()),
+                );
+                mesh.insert_attribute(
+                    BevyMesh::ATTRIBUTE_UV_0,
+                    VertexAttributeValues::Float32x2(uv.clone()),
+                );
+                mesh.insert_attribute(
+                    BevyMesh::ATTRIBUTE_NORMAL,
+                    VertexAttributeValues::Float32x3(normals.clone()),
+                );
+                mesh.set_indices(Some(Indices::U32(indices)));
+                // let tangents = generate_tangents_for_mesh(&mesh)?;
+                // mesh.insert_attribute(BevyMesh::ATTRIBUTE_TANGENT, tangents);
 
-        let label = match mesh_obj.name() {
-            Some(name) if !name.is_empty() => format!("FbxMesh@{name}/Primitive"),
-            _ => format!("FbxMesh{}/Primitive", mesh_obj.object_id().raw()),
-        };
-        debug!("Successfully loaded geometry mesh: {label}");
+                let label = match mesh_obj.name() {
+                    Some(name) if !name.is_empty() => format!("FbxMesh@{name}/Primitive{i}"),
+                    _ => format!("FbxMesh{}/Primitive{i}", mesh_obj.object_id().raw()),
+                };
+                debug!("Successfully loaded geometry mesh: {label}");
 
-        let handle = self
-            .load_context
-            .set_labeled_asset(&label, LoadedAsset::new(mesh));
-        self.scene.bevy_meshes.insert(handle.clone(), label);
-        Ok(handle)
+                let handle = self
+                    .load_context
+                    .set_labeled_asset(&label, LoadedAsset::new(mesh));
+                self.scene.bevy_meshes.insert(handle.clone(), label);
+                handle
+            })
+            .collect();
+        Ok(all_handles)
     }
 
     async fn load_mesh(
         &mut self,
         mesh_obj: object::model::MeshHandle<'_>,
-    ) -> anyhow::Result<Handle<FbxMesh>> {
+    ) -> anyhow::Result<FbxMesh> {
         let label = if let Some(name) = mesh_obj.name() {
             format!("FbxMesh@{name}")
         } else {
@@ -245,37 +306,37 @@ impl<'b, 'w> Loader<'b, 'w> {
 
         let bevy_obj = mesh_obj.geometry().context("Failed to get geometry")?;
 
-        // TODO: this sucks, but necessary because of `async` `read_asset_bytes` call in d
-        // `load_video_clip`  that virally infect everything.
-        // This can't even be ran in parallel due to deduplication
-        let mut materials = HashSet::new();
+        // async and iterators into for are necessary because of `async` `read_asset_bytes`
+        // call in `load_video_clip`  that virally infect everything.
+        // This can't even be ran in parallel, because we store already-encountered materials.
+        let mut materials = Vec::new();
         for mat in mesh_obj.materials() {
             let mat = self.load_material(mat).await;
             let mat = mat.context("Failed to load materials for mesh")?;
-            materials.insert(mat);
+            materials.push(mat);
         }
         // TODO
         // How does FBX materials work? See `convert_vertex` in fyrox/resource/fbx/mod.rs
         // It seems they assign multiple textures to the same mesh, and provide a list
         // of vertices in the mesh that it accounts for
 
-        let mesh_handle = self
-            .load_bevy_mesh(bevy_obj, 0)
+        let bevy_mesh_handles = self
+            .load_bevy_mesh(bevy_obj, materials.len())
             .context("Failed to load geometry mesh")?;
 
         let mesh = FbxMesh {
             name: mesh_obj.name().map(Into::into),
-            bevy_mesh_handle: mesh_handle,
+            bevy_mesh_handles,
             materials,
         };
 
         let mesh_handle = self
             .load_context
-            .set_labeled_asset(&label, LoadedAsset::new(mesh));
+            .set_labeled_asset(&label, LoadedAsset::new(mesh.clone()));
         debug!("Successfully loaded FBX mesh: {label}");
 
-        self.scene.add_mesh(mesh_handle.clone());
-        Ok(mesh_handle)
+        self.scene.add_mesh(mesh_handle);
+        Ok(mesh)
     }
 
     async fn load_video_clip(

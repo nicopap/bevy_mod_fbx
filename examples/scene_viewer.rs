@@ -40,7 +40,7 @@ Controls:
     })
     .insert_resource(bevy::log::LogSettings {
         level: bevy::log::Level::DEBUG,
-        filter: "wgpu=warn,bevy_ecs=info,gilrs=info,bevy_fbx=debug".to_string(),
+        filter: "wgpu=warn,bevy_ecs=info,naga=info,gilrs=info,bevy_fbx=trace".to_string(),
     })
     .insert_resource(AssetServerSettings {
         asset_folder: std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string()),
@@ -55,7 +55,7 @@ Controls:
     .add_plugin(FbxPlugin)
     .add_startup_system(setup)
     .add_system(update_lights)
-    .add_system(check_scene)
+    // .add_system(check_scene)
     .add_system(camera_controller);
 
     app.run();
@@ -112,9 +112,10 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         })
         .insert(CameraController::default());
 
-    commands.insert_resource(SceneHandle {
-        handle: asset_server.load(&scene_path),
-    });
+    commands.spawn_scene(asset_server.load(&scene_path));
+    // commands.insert_resource(SceneHandle {
+    //     handle: asset_server.load(&scene_path),
+    // });
 }
 
 const SCALE_STEP: f32 = 0.1;
