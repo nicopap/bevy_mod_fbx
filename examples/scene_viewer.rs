@@ -6,7 +6,7 @@
 //! With no arguments it will load the default cube.
 
 use bevy::{asset::AssetServerSettings, input::mouse::MouseMotion, prelude::*};
-use bevy_fbx::{FbxPlugin, FbxScene};
+use bevy_fbx::FbxPlugin;
 use bevy_inspector_egui::WorldInspectorPlugin;
 
 use std::f32::consts::TAU;
@@ -39,8 +39,8 @@ Controls:
         brightness: 1.0 / 5.0f32,
     })
     .insert_resource(bevy::log::LogSettings {
-        level: bevy::log::Level::INFO,
-        filter: "wgpu=warn,bevy_ecs=info,gilrs=info,bevy_fbx=debug".to_string(),
+        level: bevy::log::Level::DEBUG,
+        filter: "wgpu=warn,bevy_ecs=info,naga=info,gilrs=info,bevy_fbx=trace".to_string(),
     })
     .insert_resource(AssetServerSettings {
         asset_folder: std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string()),
@@ -55,46 +55,9 @@ Controls:
     .add_plugin(FbxPlugin)
     .add_startup_system(setup)
     .add_system(update_lights)
-    .add_system(check_scene)
     .add_system(camera_controller);
 
     app.run();
-}
-
-struct SceneHandle {
-    handle: Handle<FbxScene>,
-}
-fn check_scene(
-    mut commands: Commands,
-    scenes: Res<Assets<FbxScene>>,
-    handle: Option<Res<SceneHandle>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut already_spawned: Local<bool>,
-    // meshes: Res<Assets<Mesh>>,
-) {
-    if !*already_spawned {
-        // try
-        match (|| {
-            let scene = scenes.get(&handle.unwrap().handle)?;
-            // println!("{scene:#?}");
-            // let fbx_mesh = meshes.get(fbx_mesh_handle.clone_weak())?;
-            // println!("fbx mesh: {:?}", fbx_mesh.indices());
-            for fbx_mesh_handle in scene.bevy_meshes.keys() {
-                commands.spawn_bundle(PbrBundle {
-                    mesh: fbx_mesh_handle.clone_weak(),
-                    material: materials.add(Color::rgb(0.8, 0.7, 0.6).into()),
-                    ..default()
-                });
-            }
-            Some(())
-            // catch
-        })() {
-            Some(()) => {
-                *already_spawned = true;
-            }
-            _ => {}
-        }
-    }
 }
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -112,9 +75,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         })
         .insert(CameraController::default());
 
-    commands.insert_resource(SceneHandle {
-        handle: asset_server.load(&scene_path),
-    });
+    commands.spawn_scene(asset_server.load(&scene_path));
 }
 
 const SCALE_STEP: f32 = 0.1;
