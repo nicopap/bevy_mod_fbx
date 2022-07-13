@@ -8,7 +8,7 @@ use bevy::{
     ecs::world::{FromWorld, World},
     hierarchy::BuildWorldChildren,
     log::{debug, error, trace},
-    math::{DVec2, DVec3},
+    math::{DVec2, DVec3, Vec2},
     pbr::{PbrBundle, StandardMaterial},
     render::{
         color::Color,
@@ -236,7 +236,9 @@ impl<'b, 'w> Loader<'b, 'w> {
                 .uv()?;
             let get_indices = |tri_vi| -> Result<_, anyhow::Error> {
                 let v = uv.uv(&triangle_pvi_indices, tri_vi)?;
-                Ok(DVec2::from(v).as_vec2().into())
+                let fbx_uv_space = DVec2::from(v).as_vec2();
+                let bevy_uv_space = fbx_uv_space * Vec2::new(1.0, -1.0) + Vec2::new(0.0, 1.0);
+                Ok(bevy_uv_space.into())
             };
             triangle_pvi_indices
                 .triangle_vertex_indices()
