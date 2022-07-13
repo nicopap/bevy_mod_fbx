@@ -1,5 +1,7 @@
 //! Triangulator.
 
+// TODO: Replace with https://lib.rs/triangulate?
+
 use anyhow::{anyhow, bail};
 use bevy::math::{DVec2, DVec3};
 use fbxcel_dom::v7400::data::mesh::{PolygonVertexIndex, PolygonVertices};

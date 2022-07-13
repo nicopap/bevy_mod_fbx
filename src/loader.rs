@@ -88,7 +88,7 @@ impl AssetLoader for FbxLoader {
 impl<'b, 'w> Loader<'b, 'w> {
     fn new(formats: CompressedImageFormats, load_context: &'b mut LoadContext<'w>) -> Self {
         Self {
-            scene: Default::default(),
+            scene: FbxScene::default(),
             load_context,
             suported_compressed_formats: formats,
         }
@@ -484,7 +484,7 @@ impl<'b, 'w> Loader<'b, 'w> {
                 // and following code
                 StandardMaterial::default()
             }
-            v => bail!("Unknown shading model: {:?}", v),
+            v @ ShadingModel::Unknown => bail!("Unknown shading model: {:?}", v),
         };
         material.base_color_texture = texture;
         let handle = self
