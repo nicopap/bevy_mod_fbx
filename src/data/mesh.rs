@@ -1,9 +1,7 @@
 //! Mesh.
 
-use super::scene::MaterialIndex;
 use bevy::{
     asset::Handle, pbr::StandardMaterial, reflect::TypeUuid, render::mesh::Mesh as BevyMesh,
-    utils::HashSet,
 };
 
 #[derive(Debug, Clone, TypeUuid)]

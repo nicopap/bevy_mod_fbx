@@ -19,16 +19,11 @@ use bevy::{
     },
     scene::Scene,
     transform::TransformBundle,
-    utils::HashSet,
 };
 use fbxcel_dom::{
     any::AnyDocument,
     v7400::{
-        data::{
-            material::ShadingModel,
-            mesh::{layer::TypedLayerElementHandle, TriangleVertices},
-            texture::WrapMode,
-        },
+        data::{material::ShadingModel, mesh::layer::TypedLayerElementHandle, texture::WrapMode},
         object::{self, model::TypedModelHandle, TypedObjectHandle},
         Document,
     },
@@ -103,10 +98,6 @@ impl<'b, 'w> Loader<'b, 'w> {
     }
 
     async fn load(mut self, doc: Document) -> anyhow::Result<()> {
-        let default_material = StandardMaterial::from(Color::rgb(0.8, 0.7, 0.6));
-        let default_material = self
-            .load_context
-            .set_labeled_asset("DefaultFbxMaterial", LoadedAsset::new(default_material));
         let mut scene_world = World::default();
         let mut meshes = Vec::new();
         for obj in doc.objects() {
@@ -146,7 +137,11 @@ impl<'b, 'w> Loader<'b, 'w> {
         mesh_obj: object::geometry::MeshHandle,
         num_materials: usize,
     ) -> anyhow::Result<Vec<Handle<BevyMesh>>> {
-        debug!("Loading geometry mesh: {:?}", mesh_obj);
+        let label = match mesh_obj.name() {
+            Some(name) if !name.is_empty() => format!("FbxMesh@{name}/Primitive"),
+            _ => format!("FbxMesh{}/Primitive", mesh_obj.object_id().raw()),
+        };
+        trace!("Loading geometry mesh: {label}");
 
         let polygon_vertices = mesh_obj
             .polygon_vertices()
@@ -256,11 +251,21 @@ impl<'b, 'w> Loader<'b, 'w> {
             );
         }
 
+        trace!(
+            "{} different materials for this mesh",
+            indices_per_material.len()
+        );
+        // TODO: remove unused vertices from partial models
+        // this is complicated, as it also requires updating the indices.
+
+        // A single mesh may have multiple materials applied to a different subset of
+        // its vertices. In the following code, we create a unique mesh per material
+        // we found.
         let all_handles = indices_per_material
             .into_iter()
             .enumerate()
             .map(|(i, indices)| {
-                trace!("{:?}", indices);
+                trace!("{i}th material has {} vertices", indices.len());
                 let mut mesh = BevyMesh::new(PrimitiveTopology::TriangleList);
                 mesh.insert_attribute(
                     BevyMesh::ATTRIBUTE_POSITION,
@@ -278,11 +283,8 @@ impl<'b, 'w> Loader<'b, 'w> {
                 // let tangents = generate_tangents_for_mesh(&mesh)?;
                 // mesh.insert_attribute(BevyMesh::ATTRIBUTE_TANGENT, tangents);
 
-                let label = match mesh_obj.name() {
-                    Some(name) if !name.is_empty() => format!("FbxMesh@{name}/Primitive{i}"),
-                    _ => format!("FbxMesh{}/Primitive{i}", mesh_obj.object_id().raw()),
-                };
-                debug!("Successfully loaded geometry mesh: {label}");
+                let label = format!("{label}{i}");
+                trace!("Successfully loaded geometry mesh: {label}");
 
                 let handle = self
                     .load_context
@@ -304,7 +306,7 @@ impl<'b, 'w> Loader<'b, 'w> {
             format!("FbxMesh{}", mesh_obj.object_id().raw())
         };
 
-        debug!("Loading mesh: {label}");
+        trace!("Loading mesh: {label}");
 
         let bevy_obj = mesh_obj.geometry().context("Failed to get geometry")?;
 
@@ -317,10 +319,6 @@ impl<'b, 'w> Loader<'b, 'w> {
             let mat = mat.context("Failed to load materials for mesh")?;
             materials.push(mat);
         }
-        // TODO
-        // How does FBX materials work? See `convert_vertex` in fyrox/resource/fbx/mod.rs
-        // It seems they assign multiple textures to the same mesh, and provide a list
-        // of vertices in the mesh that it accounts for
 
         let bevy_mesh_handles = self
             .load_bevy_mesh(bevy_obj, materials.len())
@@ -335,7 +333,7 @@ impl<'b, 'w> Loader<'b, 'w> {
         let mesh_handle = self
             .load_context
             .set_labeled_asset(&label, LoadedAsset::new(mesh.clone()));
-        debug!("Successfully loaded FBX mesh: {label}");
+        trace!("Successfully loaded FBX mesh: {label}");
 
         self.scene.add_mesh(mesh_handle);
         Ok(mesh)
@@ -345,7 +343,7 @@ impl<'b, 'w> Loader<'b, 'w> {
         &mut self,
         video_clip_obj: object::video::ClipHandle<'_>,
     ) -> anyhow::Result<Image> {
-        debug!("Loading texture image: {:?}", video_clip_obj);
+        trace!("Loading texture image: {:?}", video_clip_obj.name());
 
         let relative_filename = video_clip_obj
             .relative_filename()
@@ -375,7 +373,10 @@ impl<'b, 'w> Loader<'b, 'w> {
             is_srgb,
         );
         let image = image.context("Failed to read image buffer data")?;
-        debug!("Successfully loaded texture image: {:?}", video_clip_obj);
+        trace!(
+            "Successfully loaded texture image: {:?}",
+            video_clip_obj.name()
+        );
         Ok(image)
     }
 
@@ -392,7 +393,7 @@ impl<'b, 'w> Loader<'b, 'w> {
             return Ok(handle.clone_weak());
         }
 
-        debug!("Loading texture: {:?}", label);
+        trace!("Loading texture: {label}");
 
         let properties = texture_obj.properties();
         let address_mode_u = {
@@ -428,7 +429,7 @@ impl<'b, 'w> Loader<'b, 'w> {
         let handle = self
             .load_context
             .set_labeled_asset(&label, LoadedAsset::new(image));
-        debug!("Successfully loaded texture: {:?}", label);
+        trace!("Successfully loaded texture: {label}");
         self.scene.textures.insert(label, handle.clone());
         Ok(handle)
     }
@@ -446,7 +447,7 @@ impl<'b, 'w> Loader<'b, 'w> {
             return Ok(handle.clone_weak());
         }
 
-        debug!("Loading material: {:?}", material_obj);
+        trace!("Loading material: {label}");
 
         let texture = material_obj
             .transparent_texture()
@@ -476,7 +477,7 @@ impl<'b, 'w> Loader<'b, 'w> {
         let handle = self
             .load_context
             .set_labeled_asset(&label, LoadedAsset::new(material));
-        debug!("Successfully loaded material: {:?}", label);
+        trace!("Successfully loaded material: {label}");
         self.scene.materials.insert(label, handle.clone());
         Ok(handle)
     }
