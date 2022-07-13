@@ -27,6 +27,10 @@ features = [
 ]
 
 [[example]]
+name = "cube"
+path = "examples/cube.rs"
+
+[[example]]
 name = "scene_viewer"
 path = "examples/scene_viewer.rs"
 
