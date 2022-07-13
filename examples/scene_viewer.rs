@@ -5,7 +5,13 @@
 //! replacing the path as appropriate.
 //! With no arguments it will load the default cube.
 
-use bevy::{asset::AssetServerSettings, input::mouse::MouseMotion, prelude::*};
+use bevy::{
+    asset::AssetServerSettings,
+    input::mouse::MouseMotion,
+    math::Vec3A,
+    prelude::*,
+    render::primitives::{Aabb, Sphere},
+};
 use bevy_fbx::FbxPlugin;
 use bevy_inspector_egui::WorldInspectorPlugin;
 
@@ -75,6 +81,32 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         })
         .insert(CameraController::default());
 
+    let sphere = Sphere {
+        center: Vec3A::ONE * 3.0,
+        radius: 100.0,
+    };
+    let aabb = Aabb::from(sphere);
+    let min = aabb.min();
+    let max = aabb.max();
+
+    info!("Spawning a directional light");
+    commands.spawn_bundle(DirectionalLightBundle {
+        directional_light: DirectionalLight {
+            illuminance: 20000.0,
+            shadow_projection: OrthographicProjection {
+                left: min.x,
+                right: max.x,
+                bottom: min.y,
+                top: max.y,
+                near: min.z,
+                far: max.z,
+                ..default()
+            },
+            shadows_enabled: false,
+            ..default()
+        },
+        ..default()
+    });
     commands.spawn_scene(asset_server.load(&scene_path));
 }
 
