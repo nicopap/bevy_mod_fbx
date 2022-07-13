@@ -360,7 +360,8 @@ impl<'b, 'w> Loader<'b, 'w> {
             content.to_vec()
         } else {
             let parent = self.load_context.path().parent().unwrap();
-            let image_path = parent.join(relative_filename);
+            let clean_relative_filename = relative_filename.replace('\\', "/");
+            let image_path = parent.join(clean_relative_filename);
             self.load_context.read_asset_bytes(image_path).await?
         };
         let is_srgb = false; // TODO
