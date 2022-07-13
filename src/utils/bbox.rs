@@ -1,6 +1,6 @@
 //! Bounding box.
 
-use bevy_math::Vec3;
+use bevy::math::Vec3;
 use std::iter::FromIterator;
 
 /// 3D bounding box.

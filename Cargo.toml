@@ -3,6 +3,7 @@ name = "bevy_fbx"
 version = "0.1.0-dev"
 edition = "2021"
 repository = "https://github.com/HeavyRain266/bevy_fbx"
+exclude = ["assets/**/*", "tools/**/*", ".github/**/*"]
 description = "Autodesl Filmbox (*.fbx) scene loader for Bevy Engine"
 license = "MIT OR Apache-2.0"
 keywords = ["bevy", "bevy_plugin", "fbx_loader"]
@@ -11,26 +12,35 @@ keywords = ["bevy", "bevy_plugin", "fbx_loader"]
 rgb = "0.8.33"
 image = "0.24.2"
 anyhow = "1.0.58"
-type-uuid = "0.1.2"
 glam = { version = "0.20", features = ["mint"] }
-thiserror = "1.0"
-fbxcel-dom = "0.0.7"
-bevy_app = "0.7.0"
-bevy_asset = "0.7.0"
-bevy_core ="0.7.0"
-# bevy_core_pipeline ="0.7.0"
-bevy_ecs = "0.7.0"
-bevy_hierarchy = "0.7.0"
-bevy_log = "0.7.0"
-bevy_math = "0.7.0"
-bevy_pbr = "0.7.0"
-bevy_reflect = "0.7.0"
-bevy_render = "0.7.0"
-bevy_scene = "0.7.0"
-bevy_transform = "0.7.0"
-bevy_tasks = "0.7.0"
-bevy_utils = "0.7.0"
+fbxcel-dom = "0.0.8"
+
+[dependencies.bevy]
+version = "0.7.0"
+default-features = false
+features = [
+  "bevy_pbr",
+  "bevy_render",
+  "bevy_winit",
+  # "bevy_core_pipeline"
+]
+
+[[example]]
+name = "scene_viewer"
+path = "examples/scene_viewer.rs"
 
 [dev-dependencies]
 bevy-inspector-egui = "0.11"
-bevy = "0.7"
+
+[dev-dependencies.bevy]
+version = "0.7.0"
+default-features = false
+features = [
+  "x11", #"wayland",
+
+  "bevy_pbr",
+  "bevy_render",
+  "bevy_winit",
+  "filesystem_watcher",
+  "bevy_core_pipeline"
+]

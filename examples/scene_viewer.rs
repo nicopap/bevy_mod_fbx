@@ -100,7 +100,7 @@ fn check_scene(
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     let mut scene_path = std::env::args()
         .nth(1)
-        .unwrap_or_else(|| "scenes/cube.fbx".to_owned());
+        .unwrap_or_else(|| "assets/cube.fbx".to_owned());
     if !scene_path.ends_with("#Scene") {
         scene_path += "#Scene";
     }

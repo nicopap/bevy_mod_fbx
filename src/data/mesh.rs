@@ -1,8 +1,8 @@
 //! Mesh.
 
-use bevy_asset::Handle;
-use bevy_reflect::TypeUuid;
-use bevy_render::mesh::Mesh as BevyMesh;
+use bevy::asset::Handle;
+use bevy::reflect::TypeUuid;
+use bevy::render::mesh::Mesh as BevyMesh;
 
 use super::scene::MaterialIndex;
 

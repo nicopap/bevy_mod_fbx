@@ -2,10 +2,10 @@
 //! Scene.
 
 use super::{material::Material, mesh::FbxMesh, texture::Texture};
-use bevy_asset::Handle;
-use bevy_reflect::TypeUuid;
-use bevy_render::mesh::Mesh as BevyMesh;
-use bevy_utils::{HashMap, HashSet};
+use bevy::asset::Handle;
+use bevy::reflect::TypeUuid;
+use bevy::render::mesh::Mesh as BevyMesh;
+use bevy::utils::{HashMap, HashSet};
 
 #[derive(Default, Debug, Clone, TypeUuid)]
 #[uuid = "e87d49b6-8d6a-43c7-bb33-5315db8516eb"]

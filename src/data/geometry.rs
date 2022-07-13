@@ -1,7 +1,7 @@
 //! Geometry.
 
 use crate::utils::bbox::OptionalBoundingBox3d;
-use bevy_math::{Vec2, Vec3};
+use bevy::math::{Vec2, Vec3};
 
 /// Geometry mesh.
 #[derive(Debug, Clone)]

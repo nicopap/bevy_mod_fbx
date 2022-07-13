@@ -1,10 +1,12 @@
 //! FBX v7400 support.
 
 use anyhow::{anyhow, bail, Context};
-use bevy_asset::{AssetLoader, Handle, LoadContext, LoadedAsset};
-use bevy_log::{debug, error, trace};
-use bevy_math::{DVec2, DVec3};
-use bevy_render::mesh::{Indices, Mesh as BevyMesh, PrimitiveTopology, VertexAttributeValues};
+use bevy::{
+    asset::{AssetLoader, BoxedFuture, Handle, LoadContext, LoadedAsset},
+    math::{DVec2, DVec3},
+    prelude::{debug, error, trace},
+    render::mesh::{Indices, Mesh as BevyMesh, PrimitiveTopology, VertexAttributeValues},
+};
 use fbxcel_dom::{
     any::AnyDocument,
     v7400::{
@@ -14,9 +16,10 @@ use fbxcel_dom::{
     },
 };
 
-use crate::data::{mesh::FbxMesh, scene::Scene};
-
-use crate::utils::triangulate;
+use crate::{
+    data::{mesh::FbxMesh, scene::Scene},
+    utils::triangulate,
+};
 
 /// How much to scale down FBX stuff.
 const FBX_SCALE: f64 = 100.0;
@@ -34,7 +37,7 @@ impl AssetLoader for FbxLoader {
         &'a self,
         bytes: &'a [u8],
         load_context: &'a mut LoadContext,
-    ) -> bevy_asset::BoxedFuture<'a, anyhow::Result<()>> {
+    ) -> BoxedFuture<'a, anyhow::Result<()>> {
         Box::pin(async move {
             let cursor = std::io::Cursor::new(bytes);
             let reader = std::io::BufReader::new(cursor);
@@ -111,7 +114,6 @@ impl<'b, 'w> Loader<'b, 'w> {
             let point = polygon_vertices
                 .control_point(cpi)
                 .ok_or_else(|| anyhow!("Failed to get control point: cpi={:?}", cpi))?;
-            // TODO: probably a better conversion method here XD
             Ok((DVec3::from(point) / FBX_SCALE).as_vec3().into())
         };
         let positions = triangle_pvi_indices
@@ -138,7 +140,6 @@ impl<'b, 'w> Loader<'b, 'w> {
                 .context("Failed to get normals")?;
             let get_indices = |tri_vi| -> Result<_, anyhow::Error> {
                 let v = normals.normal(&triangle_pvi_indices, tri_vi)?;
-                // TODO: probably a better conversion method here XD
                 Ok(DVec3::from(v).as_vec3().into())
             };
             triangle_pvi_indices
@@ -158,7 +159,6 @@ impl<'b, 'w> Loader<'b, 'w> {
                 .uv()?;
             let get_indices = |tri_vi| -> Result<_, anyhow::Error> {
                 let v = uv.uv(&triangle_pvi_indices, tri_vi)?;
-                // TODO: probably a better conversion method here XD
                 Ok(DVec2::from(v).as_vec2().into())
             };
             triangle_pvi_indices

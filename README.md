@@ -18,13 +18,12 @@ Autodesk Filmbox (*.fbx) loader for Bevy Engine.
 - [ ] Load textures
 - [ ] Convert lambert into PBR and load materials
 - [ ] Multiple scenes and entities
-- [ ] Add support for `bevy_animations`
+- [ ] Add support for `bevy_animation`
 - [ ] Provide examples with usage of complex scenes
-- [ ] Possibly test cutscenes loaded with this plugin
 
 ### Develpment tools
 
-uuidgen - generate derive macro with alredy applied UUID.
+Generate derive macro with alredy applied UUID.
 
 ```sh
 gem install securerandom
@@ -32,11 +31,14 @@ gem install securerandom
 ruby tools/uuidgen.rb # or chmod +x tools/uuidgen.rb; ./tools/uuidgen.rb
 ```
 
+### Examples
+
 Load any FBX files to render them into bevy, tool code derived from the bevy
 native gltf loader.
 
 ```sh
 cargo run --example scene_viewer path/to/file.fbx#Scene
+
 # Faster load time and compile time
 cargo run --example scene_viewer --features "bevy/dynamic" --release path/to/file.fbx#Scene
 ```
