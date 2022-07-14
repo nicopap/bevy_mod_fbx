@@ -1,4 +1,4 @@
-## bevy_fbx
+# bevy_fbx
 
 Autodesk Filmbox (*.fbx) loader for Bevy Engine.
 
@@ -13,40 +13,26 @@ Autodesk Filmbox (*.fbx) loader for Bevy Engine.
 
 - [X] Replace `cgmath` with `bevy_math`
 - [X] Write basic loader
+- [X] WebAssembly support
 - [X] Load textures
 - [ ] Convert lambert into PBR and load materials
 - [ ] Multiple scenes and entities
-- [ ] Add support for `bevy_animation`
+- [ ] Support `bevy_animation` as optional feature
 - [ ] Provide examples with usage of complex scenes
 
 ### Examples
 
-Load any FBX files to render them into bevy, tool code derived from the bevy
-native gltf loader.
+- cube: Load simple cube with point light
+- scene_viwer: Load any FBX files from `/path/to/file.fbx`, defaults to `assets/cube.fbx`
+
+Run example:
 
 ```sh
-cargo run --example scene_viewer path/to/file.fbx#Scene
+# Regular dev build
+cargo run --example <example_name>
 
-# Faster load time and compile time
-cargo run --example scene_viewer --features "bevy/dynamic" --release path/to/file.fbx#Scene
-```
-
-Load `cube.fbx` with orthographics projection
-```sh
-cargo run --example cube
-
-# Faster load time and compile time
-cargo run --example cube --features "bevy/dynamic" --release
-```
-
-### Develpment tools
-
-Generate derive macro with alredy applied UUID.
-
-```sh
-gem install securerandom
-
-ruby tools/uuidgen.rb # or chmod +x tools/uuidgen.rb; ./tools/uuidgen.rb
+# Faster asset loading
+cargu run --example <example_name> --release --features="bevy/dynamic"
 ```
 
 ## License
