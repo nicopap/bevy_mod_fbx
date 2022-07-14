@@ -7,13 +7,14 @@
 
 use bevy::{
     asset::AssetServerSettings,
-    input::{mouse::MouseMotion, system::exit_on_esc_system},
+    input::mouse::MouseMotion,
     math::Vec3A,
     prelude::*,
     render::primitives::{Aabb, Sphere},
+    window,
 };
 use bevy_fbx::FbxPlugin;
-use bevy_inspector_egui::WorldInspectorPlugin;
+// use bevy_inspector_egui::WorldInspectorPlugin;
 
 use std::f32::consts::TAU;
 
@@ -45,8 +46,9 @@ Controls:
         brightness: 1.0 / 5.0f32,
     })
     .insert_resource(bevy::log::LogSettings {
-        level: bevy::log::Level::DEBUG,
-        filter: "wgpu=warn,bevy_ecs=info,naga=info,gilrs=info,bevy_fbx=trace".to_string(),
+        level: bevy::log::Level::INFO,
+        filter: "fbxcel=info,fbxcel_dom=info,wgpu=warn,bevy_ecs=info,naga=info,gilrs=info,bevy_fbx=debug"
+            .to_string(),
     })
     .insert_resource(AssetServerSettings {
         asset_folder: std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string()),
@@ -57,12 +59,12 @@ Controls:
         ..default()
     })
     .add_plugins(DefaultPlugins)
-    .add_plugin(WorldInspectorPlugin::new())
+    // .add_plugin(WorldInspectorPlugin::new())
     .add_plugin(FbxPlugin)
     .add_startup_system(setup)
     .add_system(update_lights)
     .add_system(camera_controller)
-    .add_system(exit_on_esc_system);
+    .add_system(window::close_on_esc);
 
     app.run();
 }
@@ -76,7 +78,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     }
     info!("Loading {}", scene_path);
     commands
-        .spawn_bundle(PerspectiveCameraBundle {
+        .spawn_bundle(Camera3dBundle {
             transform: Transform::from_xyz(10.0, 4.4, 3.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
         })
@@ -108,7 +110,10 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         },
         ..default()
     });
-    commands.spawn_scene(asset_server.load(&scene_path));
+    commands.spawn_bundle(SceneBundle {
+        scene: asset_server.load(&scene_path),
+        ..Default::default()
+    });
 }
 
 const SCALE_STEP: f32 = 0.1;

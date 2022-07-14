@@ -3,16 +3,17 @@ use std::path::Path;
 use anyhow::{anyhow, bail, Context};
 use bevy::{
     asset::{AssetLoader, BoxedFuture, Handle, LoadContext, LoadedAsset},
+    core::Name,
     ecs::world::{FromWorld, World},
     hierarchy::BuildWorldChildren,
-    log::{debug, error, trace},
+    log::{debug, error, trace, warn},
     math::{DVec2, DVec3, Vec2},
-    pbr::{PbrBundle, StandardMaterial},
+    pbr::{AlphaMode, PbrBundle, StandardMaterial},
     render::{
         mesh::{Indices, Mesh as BevyMesh, PrimitiveTopology, VertexAttributeValues},
         render_resource::{AddressMode, SamplerDescriptor},
         renderer::RenderDevice,
-        texture::{CompressedImageFormats, Image, ImageType},
+        texture::{CompressedImageFormats, Image, ImageSampler, ImageType},
     },
     scene::Scene,
     transform::TransformBundle,
@@ -21,7 +22,9 @@ use fbxcel_dom::{
     any::AnyDocument,
     v7400::{
         data::{material::ShadingModel, mesh::layer::TypedLayerElementHandle, texture::WrapMode},
-        object::{self, model::TypedModelHandle, TypedObjectHandle},
+        object::{
+            self, material::MaterialHandle, model::TypedModelHandle, texture, TypedObjectHandle,
+        },
         Document,
     },
 };
@@ -107,13 +110,15 @@ impl<'b, 'w> Loader<'b, 'w> {
             .insert_bundle(TransformBundle::identity())
             .with_children(|parent| {
                 for mesh in meshes {
-                    // TODO: add the `Name` component when the mesh has a name
-                    for (mat, mesh) in mesh.materials.iter().zip(&mesh.bevy_mesh_handles) {
-                        parent.spawn_bundle(PbrBundle {
-                            mesh: mesh.clone(),
+                    for (mat, bevy_mesh) in mesh.materials.iter().zip(&mesh.bevy_mesh_handles) {
+                        let mut entity = parent.spawn_bundle(PbrBundle {
+                            mesh: bevy_mesh.clone(),
                             material: mat.clone(),
                             ..Default::default()
                         });
+                        if let Some(name) = mesh.name.as_ref() {
+                            entity.insert(Name::new(name.clone()));
+                        }
                     }
                 }
             });
@@ -258,43 +263,48 @@ impl<'b, 'w> Loader<'b, 'w> {
         // A single mesh may have multiple materials applied to a different subset of
         // its vertices. In the following code, we create a unique mesh per material
         // we found.
+        let full_mesh_indices: Vec<_> = triangle_pvi_indices
+            .triangle_vertex_indices()
+            .map(|t| t.to_usize() as u32)
+            .collect();
         let all_indices = if let Some(per_materials) = indices_per_material()? {
             per_materials
         } else {
-            vec![triangle_pvi_indices
-                .triangle_vertex_indices()
-                .map(|t| t.to_usize() as u32)
-                .collect()]
+            vec![full_mesh_indices.clone()]
         };
-        trace!("{} different materials for this mesh", all_indices.len());
+        trace!("material count for this mesh: {}", all_indices.len());
+
+        let mut mesh = BevyMesh::new(PrimitiveTopology::TriangleList);
+        mesh.insert_attribute(
+            BevyMesh::ATTRIBUTE_POSITION,
+            VertexAttributeValues::Float32x3(positions),
+        );
+        mesh.insert_attribute(
+            BevyMesh::ATTRIBUTE_UV_0,
+            VertexAttributeValues::Float32x2(uv),
+        );
+        mesh.insert_attribute(
+            BevyMesh::ATTRIBUTE_NORMAL,
+            VertexAttributeValues::Float32x3(normals),
+        );
+        mesh.set_indices(Some(Indices::U32(full_mesh_indices)));
+        mesh.generate_tangents()
+            .context("Failed to generate tangents")?;
+
         let all_handles = all_indices
             .into_iter()
             .enumerate()
-            .map(|(i, indices)| {
-                trace!("{i}th material has {} vertices", indices.len());
-                let mut mesh = BevyMesh::new(PrimitiveTopology::TriangleList);
-                mesh.insert_attribute(
-                    BevyMesh::ATTRIBUTE_POSITION,
-                    VertexAttributeValues::Float32x3(positions.clone()),
-                );
-                mesh.insert_attribute(
-                    BevyMesh::ATTRIBUTE_UV_0,
-                    VertexAttributeValues::Float32x2(uv.clone()),
-                );
-                mesh.insert_attribute(
-                    BevyMesh::ATTRIBUTE_NORMAL,
-                    VertexAttributeValues::Float32x3(normals.clone()),
-                );
-                mesh.set_indices(Some(Indices::U32(indices)));
-                // let tangents = generate_tangents_for_mesh(&mesh)?;
-                // mesh.insert_attribute(BevyMesh::ATTRIBUTE_TANGENT, tangents);
+            .map(|(i, material_indices)| {
+                trace!(" material {i} has {} vertices", material_indices.len());
+                let mut material_mesh = mesh.clone();
+                material_mesh.set_indices(Some(Indices::U32(material_indices)));
 
                 let label = format!("{label}{i}");
                 trace!("Successfully loaded geometry mesh: {label}");
 
                 let handle = self
                     .load_context
-                    .set_labeled_asset(&label, LoadedAsset::new(mesh));
+                    .set_labeled_asset(&label, LoadedAsset::new(material_mesh));
                 self.scene.bevy_meshes.insert(handle.clone(), label);
                 handle
             })
@@ -396,6 +406,7 @@ impl<'b, 'w> Loader<'b, 'w> {
     async fn load_texture(
         &mut self,
         texture_obj: object::texture::TextureHandle<'_>,
+        texture_type: &'static str,
     ) -> anyhow::Result<Handle<Image>> {
         let label = match texture_obj.name() {
             Some(name) if !name.is_empty() => format!("FbxTexture@{name}"),
@@ -433,11 +444,13 @@ impl<'b, 'w> Loader<'b, 'w> {
         let image: Result<Image, anyhow::Error> = self.load_video_clip(video_clip_obj).await;
         let mut image = image.context("Failed to load texture image")?;
 
-        image.sampler_descriptor = SamplerDescriptor {
+        image.sampler_descriptor = ImageSampler::Descriptor(SamplerDescriptor {
+            label: Some(texture_type),
             address_mode_u,
             address_mode_v,
             ..Default::default()
-        };
+        });
+        image.texture_descriptor.label = Some(texture_type);
 
         let handle = self
             .load_context
@@ -451,6 +464,8 @@ impl<'b, 'w> Loader<'b, 'w> {
         &mut self,
         material_obj: object::material::MaterialHandle<'_>,
     ) -> anyhow::Result<Handle<StandardMaterial>> {
+        use AlphaMode::{Blend, Opaque};
+        use ShadingModel::{Lambert, Phong};
         let label = match material_obj.name() {
             Some(name) if !name.is_empty() => format!("FbxMaterial@{name}"),
             _ => format!("FbxMaterial{}", material_obj.object_id().raw()),
@@ -462,31 +477,77 @@ impl<'b, 'w> Loader<'b, 'w> {
 
         trace!("Loading material: {label}");
 
-        let texture = material_obj
-            .transparent_texture()
-            .or_else(|| material_obj.diffuse_texture());
+        let is_transparent = material_obj.transparent_texture().is_some();
+        let transparent_texture = material_obj.transparent_texture();
+        let texture = transparent_texture.or_else(|| material_obj.diffuse_texture());
         let texture = match texture {
             Some(texture) => Some({
-                let texture: Result<_, anyhow::Error> = self.load_texture(texture).await;
+                let ty = "fbx_color_texture";
+                let texture: Result<_, anyhow::Error> = self.load_texture(texture, ty).await;
                 texture.context("Failed to load diffuse texture")?
             }),
             None => None,
         };
+        let normal_map = match normal_map(&material_obj) {
+            Some(texture) => Some({
+                let ty = "fbx_normal_map";
+                let texture: Result<_, anyhow::Error> = self.load_texture(texture, ty).await;
+                texture.context("Failed to load normal map")?
+            }),
+            None => None,
+        };
+
+        let emissive_texture = match emissive_map(&material_obj) {
+            Some(texture) => Some({
+                let ty = "fbx_emissive_map";
+                let texture: Result<_, anyhow::Error> = self.load_texture(texture, ty).await;
+                texture.context("Failed to load emissive texture")?
+            }),
+            None => None,
+        };
+
+        // See discussion on how to interpret specular color:
+        // TODO convert to PBR
+        // https://google.github.io/filament/Material%20Properties.pdf
+        let _specular_colors = match specular_colors(&material_obj) {
+            Some(texture) => Some({
+                let ty = "fbx_specular_colors";
+                let texture: Result<_, anyhow::Error> = self.load_texture(texture, ty).await;
+                texture.context("Failed to load specular colors")?
+            }),
+            None => None,
+        };
+
+        // TODO: occlusion texture
 
         let properties = material_obj.properties();
+
         let shading_model = properties
             .shading_model_or_default()
             .context("Failed to get shading model")?;
-        let mut material = match shading_model {
-            ShadingModel::Lambert | ShadingModel::Phong => {
-                // TODO: convert shading model to PBR, see
-                // https://github.com/Sagoia/FBX2glTF/blob/dc300136c080c2f206b447ed15fb73e942653120/src/gltf/Raw2Gltf.cpp#L255
-                // and following code
-                StandardMaterial::default()
-            }
-            v @ ShadingModel::Unknown => bail!("Unknown shading model: {:?}", v),
+
+        // TODO: add the `RAW_SHADING_MODEL_PBR_MET_ROUGH` variant to ShadingModel enum
+        // Based on FBX2glTF code
+        // https://github.com/Sagoia/FBX2glTF/blob/dc300136c080c2f206b447ed15fb73e942653120/src/gltf/Raw2Gltf.cpp#L255
+        let (metallic, roughness) = if matches!(shading_model, Lambert | Phong) {
+            let shininess = properties.shininess()?;
+            let roughness = shininess.map(|s| (2.0 / (2.0 + s)).sqrt());
+            (0.4, roughness.unwrap_or(0.8))
+        } else {
+            warn!("Encountered an unknown shading_model in {label}, the resulting material may be unexpected");
+            (0.2, 0.8)
         };
-        material.base_color_texture = texture;
+
+        let material = StandardMaterial {
+            alpha_mode: if is_transparent { Blend } else { Opaque },
+            metallic: metallic as f32,
+            normal_map_texture: normal_map,
+            emissive_texture,
+            perceptual_roughness: roughness as f32,
+            base_color_texture: texture,
+            flip_normal_map_y: true,
+            ..Default::default()
+        };
         let handle = self
             .load_context
             .set_labeled_asset(&label, LoadedAsset::new(material));
@@ -495,3 +556,31 @@ impl<'b, 'w> Loader<'b, 'w> {
         Ok(handle)
     }
 }
+// TODO: upstream following to fbxcel_dom (see https://github.com/lo48576/fbxcel-dom/issues/14)
+/// Returns a texture object connected with the given label, if available.
+fn get_texture_node<'a>(
+    obj: &MaterialHandle<'a>,
+    label: &str,
+) -> Option<texture::TextureHandle<'a>> {
+    obj.source_objects()
+        .filter(|obj| obj.label() == Some(label))
+        .filter_map(|obj| obj.object_handle())
+        .find_map(|obj| match obj.get_typed() {
+            TypedObjectHandle::Texture(o) => Some(o),
+            _ => None,
+        })
+}
+
+fn normal_map<'a>(obj: &MaterialHandle<'a>) -> Option<texture::TextureHandle<'a>> {
+    get_texture_node(obj, "NormalMap")
+}
+fn specular_colors<'a>(obj: &MaterialHandle<'a>) -> Option<texture::TextureHandle<'a>> {
+    get_texture_node(obj, "SpecularColor")
+}
+fn emissive_map<'a>(obj: &MaterialHandle<'a>) -> Option<texture::TextureHandle<'a>> {
+    get_texture_node(obj, "EmissiveColor")
+}
+// TODO likely
+// fn occlusion_map<'a>(obj: &MaterialHandle<'a>) -> Option<texture::TextureHandle<'a>> {
+//     get_texture_node(obj, "Occlusion")
+// }

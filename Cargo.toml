@@ -10,13 +10,12 @@ keywords = ["bevy", "bevy_plugin", "fbx_loader"]
 
 [dependencies]
 rgb = "0.8.33"
-image = "0.24.2"
 anyhow = "1.0.58"
-glam = { version = "0.20", features = ["mint"] }
+glam = { version = "0.21", features = ["mint"] }
 fbxcel-dom = "0.0.8"
 
 [dependencies.bevy]
-version = "0.7.0"
+version = "0.8.0-dev"
 default-features = false
 features = [
   "tga",
@@ -25,6 +24,8 @@ features = [
   "bevy_winit",
   # "bevy_core_pipeline"
 ]
+git = "https://github.com/bevyengine/bevy.git"
+rev = "fe59fe5860a1524801f9f2895204d7bb6e09513a"
 
 [[example]]
 name = "cube"
@@ -35,10 +36,10 @@ name = "scene_viewer"
 path = "examples/scene_viewer.rs"
 
 [dev-dependencies]
-bevy-inspector-egui = "0.11"
+# bevy-inspector-egui = "0.11"
 
 [dev-dependencies.bevy]
-version = "0.7.0"
+version = "0.8.0-dev"
 default-features = false
 features = [
   "x11", #"wayland",
@@ -50,3 +51,5 @@ features = [
   "filesystem_watcher",
   "bevy_core_pipeline"
 ]
+git = "https://github.com/bevyengine/bevy.git"
+rev = "fe59fe5860a1524801f9f2895204d7bb6e09513a"
