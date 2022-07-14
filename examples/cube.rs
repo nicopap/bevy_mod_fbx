@@ -1,4 +1,4 @@
-use bevy::{prelude::*, render::camera::Projection};
+use bevy::{prelude::*, render::camera::ScalingMode};
 use bevy_fbx::FbxPlugin;
 
 fn main() {
@@ -6,18 +6,16 @@ fn main() {
 
     app.insert_resource(WindowDescriptor {
         title: "simple cube".into(),
+        width: 756.0,
+        height: 574.0,
 
         ..default()
-    })
-    .insert_resource(bevy::log::LogSettings {
-        level: bevy::log::Level::DEBUG,
-        filter: "wgpu=warn,bevy_ecs=info,naga=info,gilrs=info,bevy_fbx=trace".to_string(),
     });
 
     app.add_plugins(DefaultPlugins);
     app.add_plugin(FbxPlugin);
 
-    app.add_system(setup);
+    app.add_startup_system(setup);
 
     app.run();
 }
@@ -25,17 +23,29 @@ fn main() {
 fn setup(mut cmd: Commands, asset_server: Res<AssetServer>) {
     let cube: Handle<Scene> = asset_server.load("cube.fbx#Scene");
 
-    let camera = Camera3dBundle {
-        projection: Projection::Orthographic(OrthographicProjection {
+    // Orthographic camera
+    cmd.spawn_bundle(Camera3dBundle {
+        projection: OrthographicProjection {
             scale: 3.0,
+            scaling_mode: ScalingMode::FixedVertical(2.0),
+
             ..default()
-        }),
+        }
+        .into(),
+
         transform: Transform::from_xyz(5.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+
         ..default()
-    };
+    });
 
-    cmd.spawn_bundle(camera);
+    // light
+    cmd.spawn_bundle(PointLightBundle {
+        transform: Transform::from_xyz(3.0, 8.0, 5.0),
 
+        ..default()
+    });
+
+    // Cube
     cmd.spawn_bundle(TransformBundle {
         local: Transform::from_xyz(0.0, 0.0, 0.0),
         global: GlobalTransform::identity(),
@@ -43,6 +53,7 @@ fn setup(mut cmd: Commands, asset_server: Res<AssetServer>) {
     .with_children(|parent| {
         parent.spawn_bundle(SceneBundle {
             scene: cube,
+
             ..default()
         });
     });
