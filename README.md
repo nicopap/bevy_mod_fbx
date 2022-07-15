@@ -8,6 +8,7 @@ Autodesk Filmbox (*.fbx) loader for Bevy Engine.
 
 - Only binary version of FBX 7.4 & 7.5 are supported.
 - No ASCII FBX format support is planned. (blocked by upstream)
+- No support for multiple scenes within single FBX file.
 
 ### What have to be done
 
@@ -15,10 +16,11 @@ Autodesk Filmbox (*.fbx) loader for Bevy Engine.
 - [X] Write basic loader
 - [X] WebAssembly support
 - [X] Load textures
-- [ ] Convert lambert into PBR and load materials
-- [ ] Multiple scenes and entities
-- [ ] Support `bevy_animation` as optional feature
-- [ ] Provide examples with usage of complex scenes
+- [ ] Expand/rewrite triangulator ([#11](https://github.com/HeavyRain266/bevy_fbx/issues/11))
+- [ ] Proper scaling based on FBX config scale ([#10](https://github.com/HeavyRain266/bevy_fbx/issues/10))
+- [ ] Convert lambert into PBR and load materials ([#12](https://github.com/HeavyRain266/bevy_fbx/issues/12))
+- [ ] Support `bevy_animation` as optional feature ([#13](https://github.com/HeavyRain266/bevy_fbx/issues/13))
+- [ ] Provide examples with usage of complex scenes ([#6](https://github.com/HeavyRain266/bevy_fbx/issues/6))
 
 ### Examples
 
@@ -32,7 +34,7 @@ Run example:
 cargo run --example <example_name>
 
 # Faster asset loading
-cargu run --example <example_name> --release --features="bevy/dynamic"
+cargu run --example <example_name> --release --features bevy/dynamic
 ```
 
 ## License

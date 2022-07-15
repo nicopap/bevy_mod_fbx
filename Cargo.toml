@@ -35,7 +35,7 @@ path = "examples/cube.rs"
 name = "scene_viewer"
 path = "examples/scene_viewer.rs"
 
-[dev-dependencies]
+# [dev-dependencies]
 # bevy-inspector-egui = "0.11"
 
 [dev-dependencies.bevy]
