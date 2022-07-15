@@ -8,10 +8,11 @@
 use bevy::{
     asset::AssetServerSettings,
     input::mouse::MouseMotion,
+    log::{Level, LogSettings},
     math::Vec3A,
     prelude::*,
     render::primitives::{Aabb, Sphere},
-    window,
+    window::close_on_esc,
 };
 use bevy_fbx::FbxPlugin;
 // use bevy_inspector_egui::WorldInspectorPlugin;
@@ -45,8 +46,8 @@ Controls:
         color: Color::WHITE,
         brightness: 1.0 / 5.0f32,
     })
-    .insert_resource(bevy::log::LogSettings {
-        level: bevy::log::Level::INFO,
+    .insert_resource(LogSettings {
+        level: Level::INFO,
         filter: "fbxcel=info,fbxcel_dom=info,wgpu=warn,bevy_ecs=info,naga=info,gilrs=info,bevy_fbx=debug"
             .to_string(),
     })
@@ -64,7 +65,7 @@ Controls:
     .add_startup_system(setup)
     .add_system(update_lights)
     .add_system(camera_controller)
-    .add_system(window::close_on_esc);
+    .add_system(close_on_esc);
 
     app.run();
 }

@@ -1,4 +1,4 @@
-use bevy::{prelude::*, render::camera::ScalingMode};
+use bevy::{prelude::*, render::camera::ScalingMode, window::close_on_esc};
 use bevy_fbx::FbxPlugin;
 
 fn main() {
@@ -16,6 +16,7 @@ fn main() {
     app.add_plugin(FbxPlugin);
 
     app.add_startup_system(setup);
+    app.add_system(close_on_esc);
 
     app.run();
 }

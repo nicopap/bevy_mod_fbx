@@ -25,7 +25,7 @@ features = [
   # "bevy_core_pipeline"
 ]
 git = "https://github.com/bevyengine/bevy.git"
-rev = "fe59fe5860a1524801f9f2895204d7bb6e09513a"
+rev = "44566dbab7107f0231dafd99598a20acb9d471b0"
 
 [[example]]
 name = "cube"
@@ -52,4 +52,4 @@ features = [
   "bevy_core_pipeline"
 ]
 git = "https://github.com/bevyengine/bevy.git"
-rev = "fe59fe5860a1524801f9f2895204d7bb6e09513a"
+rev = "44566dbab7107f0231dafd99598a20acb9d471b0"
