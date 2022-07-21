@@ -10,6 +10,7 @@ use bevy::{
     math::{DVec2, DVec3, Vec2},
     pbr::{AlphaMode, PbrBundle, StandardMaterial},
     render::{
+        color::Color,
         mesh::{Indices, Mesh as BevyMesh, PrimitiveTopology, VertexAttributeValues},
         render_resource::{AddressMode, SamplerDescriptor},
         renderer::RenderDevice,
@@ -28,6 +29,7 @@ use fbxcel_dom::{
         Document,
     },
 };
+use rgb::RGB;
 
 use crate::{
     data::{FbxMesh, FbxScene},
@@ -537,6 +539,9 @@ impl<'b, 'w> Loader<'b, 'w> {
             warn!("Encountered an unknown shading_model in {label}, the resulting material may be unexpected");
             (0.2, 0.8)
         };
+        let diffuse_color = properties
+            .diffuse_color_or_default()
+            .context("Failed to get diffuse color")?;
 
         let material = StandardMaterial {
             alpha_mode: if is_transparent { Blend } else { Opaque },
@@ -545,6 +550,7 @@ impl<'b, 'w> Loader<'b, 'w> {
             emissive_texture,
             perceptual_roughness: roughness as f32,
             base_color_texture: texture,
+            base_color: ColorAdapter(diffuse_color).into(),
             flip_normal_map_y: true,
             ..Default::default()
         };
@@ -569,6 +575,13 @@ fn get_texture_node<'a>(
             TypedObjectHandle::Texture(o) => Some(o),
             _ => None,
         })
+}
+
+struct ColorAdapter(RGB<f64>);
+impl From<ColorAdapter> for Color {
+    fn from(ColorAdapter(rgb): ColorAdapter) -> Self {
+        Color::rgb(rgb.r as f32, rgb.g as f32, rgb.b as f32)
+    }
 }
 
 fn normal_map<'a>(obj: &MaterialHandle<'a>) -> Option<texture::TextureHandle<'a>> {
