@@ -39,7 +39,6 @@ use crate::{
 /// How much to scale down FBX stuff.
 const FBX_SCALE: f64 = 100.0;
 
-// TODO: multiple scenes
 pub struct Loader<'b, 'w> {
     scene: FbxScene,
     load_context: &'b mut LoadContext<'w>,
