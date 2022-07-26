@@ -12,6 +12,7 @@ keywords = ["bevy", "bevy_plugin", "fbx_loader"]
 rgb = "0.8.33"
 anyhow = "1.0.58"
 glam = { version = "0.21", features = ["mint"] }
+# fbxcel-dom = { version = "0.0.8", path = "../fbxcel-dom" }
 fbxcel-dom = "0.0.8"
 
 [dependencies.bevy]
@@ -25,7 +26,7 @@ features = [
   # "bevy_core_pipeline"
 ]
 git = "https://github.com/bevyengine/bevy.git"
-rev = "44566dbab7107f0231dafd99598a20acb9d471b0"
+rev = "619c30c036ddfceb66030922099961bd17b65e35"
 
 [[example]]
 name = "cube"
@@ -52,4 +53,4 @@ features = [
   "bevy_core_pipeline"
 ]
 git = "https://github.com/bevyengine/bevy.git"
-rev = "44566dbab7107f0231dafd99598a20acb9d471b0"
+rev = "619c30c036ddfceb66030922099961bd17b65e35"

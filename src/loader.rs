@@ -6,34 +6,33 @@ use bevy::{
     core::Name,
     ecs::world::{FromWorld, World},
     hierarchy::BuildWorldChildren,
-    log::{debug, error, trace, warn},
+    log::{debug, error, trace},
     math::{DVec2, DVec3, Vec2},
-    pbr::{AlphaMode, PbrBundle, StandardMaterial},
+    pbr::{PbrBundle, StandardMaterial},
     render::{
-        color::Color,
         mesh::{Indices, Mesh as BevyMesh, PrimitiveTopology, VertexAttributeValues},
         render_resource::{AddressMode, SamplerDescriptor},
         renderer::RenderDevice,
         texture::{CompressedImageFormats, Image, ImageSampler, ImageType},
+        view::VisibilityBundle,
     },
     scene::Scene,
     transform::TransformBundle,
+    utils::HashMap,
 };
 use fbxcel_dom::{
     any::AnyDocument,
     v7400::{
-        data::{material::ShadingModel, mesh::layer::TypedLayerElementHandle, texture::WrapMode},
-        object::{
-            self, material::MaterialHandle, model::TypedModelHandle, texture, TypedObjectHandle,
-        },
+        data::{mesh::layer::TypedLayerElementHandle, texture::WrapMode},
+        object::{self, model::TypedModelHandle, texture::TextureHandle, TypedObjectHandle},
         Document,
     },
 };
-use rgb::RGB;
 
 use crate::{
     data::{FbxMesh, FbxScene},
     utils::triangulate,
+    MaterialLoader,
 };
 
 /// How much to scale down FBX stuff.
@@ -43,10 +42,12 @@ pub struct Loader<'b, 'w> {
     scene: FbxScene,
     load_context: &'b mut LoadContext<'w>,
     suported_compressed_formats: CompressedImageFormats,
+    material_loaders: Vec<MaterialLoader>,
 }
 
 pub struct FbxLoader {
     supported: CompressedImageFormats,
+    material_loaders: Vec<MaterialLoader>,
 }
 impl FromWorld for FbxLoader {
     fn from_world(world: &mut World) -> Self {
@@ -55,7 +56,11 @@ impl FromWorld for FbxLoader {
 
             None => CompressedImageFormats::all(),
         };
-        Self { supported }
+        let loaders: crate::FbxMaterialLoaders = world.get_resource().cloned().unwrap_or_default();
+        Self {
+            supported,
+            material_loaders: loaders.0,
+        }
     }
 }
 impl AssetLoader for FbxLoader {
@@ -70,7 +75,8 @@ impl AssetLoader for FbxLoader {
             let maybe_doc =
                 AnyDocument::from_seekable_reader(reader).expect("Failed to load document");
             if let AnyDocument::V7400(_ver, doc) = maybe_doc {
-                let loader = Loader::new(self.supported, load_context);
+                let loader =
+                    Loader::new(self.supported, self.material_loaders.clone(), load_context);
                 let potential_error = loader
                     .load(*doc)
                     .await
@@ -89,46 +95,55 @@ impl AssetLoader for FbxLoader {
     }
 }
 
+fn generate_scene(meshes: Vec<FbxMesh>) -> Scene {
+    let mut scene_world = World::default();
+    scene_world
+        .spawn()
+        .insert_bundle(VisibilityBundle::default())
+        .insert_bundle(TransformBundle::identity())
+        .with_children(|parent| {
+            for mesh in meshes {
+                for (mat, bevy_mesh) in mesh.materials.iter().zip(&mesh.bevy_mesh_handles) {
+                    let mut entity = parent.spawn_bundle(PbrBundle {
+                        mesh: bevy_mesh.clone(),
+                        material: mat.clone(),
+                        ..Default::default()
+                    });
+                    if let Some(name) = mesh.name.as_ref() {
+                        entity.insert(Name::new(name.clone()));
+                    }
+                }
+            }
+        });
+    Scene::new(scene_world)
+}
+
 impl<'b, 'w> Loader<'b, 'w> {
-    fn new(formats: CompressedImageFormats, load_context: &'b mut LoadContext<'w>) -> Self {
+    fn new(
+        formats: CompressedImageFormats,
+        loaders: Vec<MaterialLoader>,
+        load_context: &'b mut LoadContext<'w>,
+    ) -> Self {
         Self {
             scene: FbxScene::default(),
             load_context,
+            material_loaders: loaders,
             suported_compressed_formats: formats,
         }
     }
 
     async fn load(mut self, doc: Document) -> anyhow::Result<()> {
-        let mut scene_world = World::default();
         let mut meshes = Vec::new();
         for obj in doc.objects() {
             if let TypedObjectHandle::Model(TypedModelHandle::Mesh(mesh)) = obj.get_typed() {
                 meshes.push(self.load_mesh(mesh).await?);
             }
         }
-        scene_world
-            .spawn()
-            .insert_bundle(TransformBundle::identity())
-            .with_children(|parent| {
-                for mesh in meshes {
-                    for (mat, bevy_mesh) in mesh.materials.iter().zip(&mesh.bevy_mesh_handles) {
-                        let mut entity = parent.spawn_bundle(PbrBundle {
-                            mesh: bevy_mesh.clone(),
-                            material: mat.clone(),
-                            ..Default::default()
-                        });
-                        if let Some(name) = mesh.name.as_ref() {
-                            entity.insert(Name::new(name.clone()));
-                        }
-                    }
-                }
-            });
         let scene = self.scene;
         let load_context = self.load_context;
         load_context.set_labeled_asset("FbxScene", LoadedAsset::new(scene));
 
-        let scene = Scene::new(scene_world);
-        load_context.set_labeled_asset("Scene", LoadedAsset::new(scene));
+        load_context.set_labeled_asset("Scene", LoadedAsset::new(generate_scene(meshes)));
         debug!(
             "Successfully loaded scene {}#FbxScene",
             load_context.path().to_string_lossy(),
@@ -404,22 +419,80 @@ impl<'b, 'w> Loader<'b, 'w> {
         Ok(image)
     }
 
-    async fn load_texture(
+    async fn run_loader(
+        &mut self,
+        material_obj: object::material::MaterialHandle<'_>,
+        MaterialLoader {
+            static_load,
+            dynamic_load,
+            preprocess_textures,
+            with_textures,
+        }: MaterialLoader,
+    ) -> anyhow::Result<Option<StandardMaterial>> {
+        use crate::utils::fbx_extend::*;
+        enum TextureSource<'a> {
+            Processed(Image),
+            Handle(TextureHandle<'a>),
+        }
+        let mut textures = HashMap::default();
+        // code is a bit tricky so here is a rundown:
+        // 1. Load all textures that are meant to be preprocessed by the
+        //    MaterialLoader
+        for &label in dynamic_load {
+            if let Some(texture) = material_obj.load_texture(label) {
+                let texture = self.get_texture(texture).await?;
+                textures.insert(label, texture);
+            }
+        }
+        preprocess_textures(material_obj, &mut textures);
+        // 2. Put the loaded images and the non-preprocessed texture labels into an iterator
+        let mut texture_handles = HashMap::with_capacity(textures.len() + static_load.len());
+        let texture_handles_iter = textures
+            .drain()
+            .map(|(label, image)| (label, TextureSource::Processed(image)))
+            .chain(static_load.iter().filter_map(|l| {
+                material_obj
+                    .load_texture(l)
+                    .map(|te| (*l, TextureSource::Handle(te)))
+            }));
+        // 3. For each of those, create an image handle (with potential caching based on the texture name)
+        for (label, texture) in texture_handles_iter {
+            let handle_label = match texture {
+                TextureSource::Handle(texture_handle) => match texture_handle.name() {
+                    Some(name) if !name.is_empty() => format!("FbxTexture@{name}"),
+                    _ => format!("FbxTexture{}", texture_handle.object_id().raw()),
+                },
+                TextureSource::Processed(_) => match material_obj.name() {
+                    Some(name) if !name.is_empty() => format!("FbxTextureMat@{name}/{label}"),
+                    _ => format!("FbxTextureMat{}/{label}", material_obj.object_id().raw()),
+                },
+            };
+
+            // Either copy the already-created handle or create a new asset
+            // for each image or texture to load.
+            let handle = if let Some(handle) = self.scene.textures.get(&handle_label) {
+                trace!("already encountered texture: {label}, skipping");
+                handle.clone()
+            } else {
+                let texture = match texture {
+                    TextureSource::Processed(texture) => texture,
+                    TextureSource::Handle(texture) => self.get_texture(texture).await?,
+                };
+                let handle = self
+                    .load_context
+                    .set_labeled_asset(&handle_label, LoadedAsset::new(texture));
+                self.scene.textures.insert(handle_label, handle.clone());
+                handle
+            };
+            texture_handles.insert(label, handle);
+        }
+        // 4. Call with all the texture handles
+        Ok(with_textures(material_obj, texture_handles))
+    }
+    async fn get_texture(
         &mut self,
         texture_obj: object::texture::TextureHandle<'_>,
-        texture_type: &'static str,
-    ) -> anyhow::Result<Handle<Image>> {
-        let label = match texture_obj.name() {
-            Some(name) if !name.is_empty() => format!("FbxTexture@{name}"),
-            _ => format!("FbxTexture{}", texture_obj.object_id().raw()),
-        };
-        if let Some(handle) = self.scene.textures.get(&label) {
-            trace!("already encountered texture: {label}, skipping");
-            return Ok(handle.clone_weak());
-        }
-
-        trace!("Loading texture: {label}");
-
+    ) -> anyhow::Result<Image> {
         let properties = texture_obj.properties();
         let address_mode_u = {
             let val = properties
@@ -441,32 +514,22 @@ impl<'b, 'w> Loader<'b, 'w> {
         };
         let video_clip_obj = texture_obj
             .video_clip()
-            .ok_or_else(|| anyhow!("No image data for texture object: {:?}", label))?;
+            .context("No image data for texture object")?;
+
         let image: Result<Image, anyhow::Error> = self.load_video_clip(video_clip_obj).await;
         let mut image = image.context("Failed to load texture image")?;
 
         image.sampler_descriptor = ImageSampler::Descriptor(SamplerDescriptor {
-            label: Some(texture_type),
             address_mode_u,
             address_mode_v,
             ..Default::default()
         });
-        image.texture_descriptor.label = Some(texture_type);
-
-        let handle = self
-            .load_context
-            .set_labeled_asset(&label, LoadedAsset::new(image));
-        trace!("Successfully loaded texture: {label}");
-        self.scene.textures.insert(label, handle.clone());
-        Ok(handle)
+        Ok(image)
     }
-
     async fn load_material(
         &mut self,
         material_obj: object::material::MaterialHandle<'_>,
     ) -> anyhow::Result<Handle<StandardMaterial>> {
-        use AlphaMode::{Blend, Opaque};
-        use ShadingModel::{Lambert, Phong};
         let label = match material_obj.name() {
             Some(name) if !name.is_empty() => format!("FbxMaterial@{name}"),
             _ => format!("FbxMaterial{}", material_obj.object_id().raw()),
@@ -478,81 +541,15 @@ impl<'b, 'w> Loader<'b, 'w> {
 
         trace!("Loading material: {label}");
 
-        let is_transparent = material_obj.transparent_texture().is_some();
-        let transparent_texture = material_obj.transparent_texture();
-        let texture = transparent_texture.or_else(|| material_obj.diffuse_texture());
-        let texture = match texture {
-            Some(texture) => Some({
-                let ty = "fbx_color_texture";
-                let texture: Result<_, anyhow::Error> = self.load_texture(texture, ty).await;
-                texture.context("Failed to load diffuse texture")?
-            }),
-            None => None,
-        };
-        let normal_map = match normal_map(&material_obj) {
-            Some(texture) => Some({
-                let ty = "fbx_normal_map";
-                let texture: Result<_, anyhow::Error> = self.load_texture(texture, ty).await;
-                texture.context("Failed to load normal map")?
-            }),
-            None => None,
-        };
-
-        let emissive_texture = match emissive_map(&material_obj) {
-            Some(texture) => Some({
-                let ty = "fbx_emissive_map";
-                let texture: Result<_, anyhow::Error> = self.load_texture(texture, ty).await;
-                texture.context("Failed to load emissive texture")?
-            }),
-            None => None,
-        };
-
-        // See discussion on how to interpret specular color:
-        // TODO convert to PBR
-        // https://google.github.io/filament/Material%20Properties.pdf
-        let _specular_colors = match specular_colors(&material_obj) {
-            Some(texture) => Some({
-                let ty = "fbx_specular_colors";
-                let texture: Result<_, anyhow::Error> = self.load_texture(texture, ty).await;
-                texture.context("Failed to load specular colors")?
-            }),
-            None => None,
-        };
-
-        // TODO: occlusion texture
-
-        let properties = material_obj.properties();
-
-        let shading_model = properties
-            .shading_model_or_default()
-            .context("Failed to get shading model")?;
-
-        // TODO: add the `RAW_SHADING_MODEL_PBR_MET_ROUGH` variant to ShadingModel enum
-        // Based on FBX2glTF code
-        // https://github.com/Sagoia/FBX2glTF/blob/dc300136c080c2f206b447ed15fb73e942653120/src/gltf/Raw2Gltf.cpp#L255
-        let (metallic, roughness) = if matches!(shading_model, Lambert | Phong) {
-            let shininess = properties.shininess()?;
-            let roughness = shininess.map(|s| (2.0 / (2.0 + s)).sqrt());
-            (0.4, roughness.unwrap_or(0.8))
-        } else {
-            warn!("Encountered an unknown shading_model in {label}, the resulting material may be unexpected");
-            (0.2, 0.8)
-        };
-        let diffuse_color = properties
-            .diffuse_color_or_default()
-            .context("Failed to get diffuse color")?;
-
-        let material = StandardMaterial {
-            alpha_mode: if is_transparent { Blend } else { Opaque },
-            metallic: metallic as f32,
-            normal_map_texture: normal_map,
-            emissive_texture,
-            perceptual_roughness: roughness as f32,
-            base_color_texture: texture,
-            base_color: ColorAdapter(diffuse_color).into(),
-            flip_normal_map_y: true,
-            ..Default::default()
-        };
+        let mut material = None;
+        let loaders = self.material_loaders.clone();
+        for &loader in &loaders {
+            if let Some(loader_material) = self.run_loader(material_obj, loader).await? {
+                material = Some(loader_material);
+                break;
+            }
+        }
+        let material = material.context("None of the material loaders could load this material")?;
         let handle = self
             .load_context
             .set_labeled_asset(&label, LoadedAsset::new(material));
@@ -561,38 +558,3 @@ impl<'b, 'w> Loader<'b, 'w> {
         Ok(handle)
     }
 }
-// TODO: upstream following to fbxcel_dom (see https://github.com/lo48576/fbxcel-dom/issues/14)
-/// Returns a texture object connected with the given label, if available.
-fn get_texture_node<'a>(
-    obj: &MaterialHandle<'a>,
-    label: &str,
-) -> Option<texture::TextureHandle<'a>> {
-    obj.source_objects()
-        .filter(|obj| obj.label() == Some(label))
-        .filter_map(|obj| obj.object_handle())
-        .find_map(|obj| match obj.get_typed() {
-            TypedObjectHandle::Texture(o) => Some(o),
-            _ => None,
-        })
-}
-
-struct ColorAdapter(RGB<f64>);
-impl From<ColorAdapter> for Color {
-    fn from(ColorAdapter(rgb): ColorAdapter) -> Self {
-        Color::rgb(rgb.r as f32, rgb.g as f32, rgb.b as f32)
-    }
-}
-
-fn normal_map<'a>(obj: &MaterialHandle<'a>) -> Option<texture::TextureHandle<'a>> {
-    get_texture_node(obj, "NormalMap")
-}
-fn specular_colors<'a>(obj: &MaterialHandle<'a>) -> Option<texture::TextureHandle<'a>> {
-    get_texture_node(obj, "SpecularColor")
-}
-fn emissive_map<'a>(obj: &MaterialHandle<'a>) -> Option<texture::TextureHandle<'a>> {
-    get_texture_node(obj, "EmissiveColor")
-}
-// TODO likely
-// fn occlusion_map<'a>(obj: &MaterialHandle<'a>) -> Option<texture::TextureHandle<'a>> {
-//     get_texture_node(obj, "Occlusion")
-// }
