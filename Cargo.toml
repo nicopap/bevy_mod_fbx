@@ -8,6 +8,9 @@ description = "Autodesl Filmbox (*.fbx) scene loader for Bevy Engine"
 license = "MIT OR Apache-2.0"
 keywords = ["bevy", "bevy_plugin", "fbx_loader"]
 
+[features]
+profile = []
+
 [dependencies]
 rgb = "0.8.33"
 anyhow = "1.0.58"
