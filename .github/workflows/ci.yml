@@ -40,6 +40,11 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --examples -- -D warnings
+      - name: Run clippy for optional features
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --examples --features maya_3dsmax_pbr -- -D warnings
 
   format:
     name: Format
