@@ -1,3 +1,6 @@
+#[cfg(feature = "maya_3dsmax_pbr")]
+use crate::utils::fbx_extend::*;
+
 use bevy::{
     pbr::{AlphaMode, StandardMaterial},
     prelude::{Color, Handle, Image},
@@ -143,6 +146,13 @@ pub const LOAD_FALLBACK: MaterialLoader = MaterialLoader {
     },
 };
 
+#[cfg(feature = "maya_3dsmax_pbr")]
+mod maya_consts {
+    pub const PBR_TYPE_ID: i32 = 1166017;
+    pub const DEFAULT_ROUGHNESS: f32 = 0.089;
+    pub const DEFAULT_METALIC: f32 = 0.01;
+}
+
 // Note that it's impossible to enable the `maya_pbr` feature right now.
 /// Load Maya's PBR material FBX extension.
 ///
@@ -150,18 +160,101 @@ pub const LOAD_FALLBACK: MaterialLoader = MaterialLoader {
 /// since bevy's PBR currently doesn't support environment maps.
 ///
 /// This loader is only available if the `maya_pbr` feature is enabled.
-#[cfg(feature = "maya_pbr")]
+#[cfg(feature = "maya_3dsmax_pbr")]
 pub const LOAD_MAYA_PBR: MaterialLoader = MaterialLoader {
     static_load: &[
-        "NormalMap",
-        "SpecularColor",
-        "EmissiveColor",
-        "DiffuseColor",
-        "TransparentColor",
+        "Maya|TEX_normal_map",
+        "Maya|TEX_color_map",
+        "Maya|TEX_ao_map",
+        "Maya|TEX_emissive_map",
     ],
-    dynamic_load: &[],
-    preprocess_textures: |_, _images| {},
-    with_textures: |_, _textures| None,
+    dynamic_load: &["Maya|TEX_metallic_map", "Maya|TEX_roughness_map"],
+    // FIXME: this assumes both metallic map and roughness map
+    // are encoded in texture formats that can be stored as
+    // a byte array in CPU memory.
+    // This is not the case for compressed formats such as KTX or DDS
+    // FIXME: this also assumes the texture channels are 8 bit.
+    preprocess_textures: |material_handle, images| {
+        use bevy::render::render_resource::{TextureDimension::D2, TextureFormat::Rgba8UnormSrgb};
+        let mut run = || {
+            // return early if we detect this material is not Maya's PBR material
+            let mat_maya_type = material_handle.get_i32("Maya|TypeId")?;
+            if mat_maya_type != maya_consts::PBR_TYPE_ID {
+                return None;
+            }
+            let combine_colors = |colors: &[u8]| match colors {
+                // Only one channel is necessary for the metallic and roughness
+                // maps. If we assume the texture is greyscale, we can take any
+                // channel (R, G, B) and assume it's approximately the value we want.
+                &[bw, ..] => bw,
+                _ => unreachable!("A texture must at least have a single channel"),
+            };
+            // Merge the metallic and roughness map textures into one,
+            // following the GlTF standard for PBR textures.
+            // The resulting texture should have:
+            // - Green channel set to roughness
+            // - Blue channel set to metallic
+            let metallic = images.remove("Maya|TEX_metallic_map")?;
+            let rough = images.remove("Maya|TEX_roughness_map")?;
+            let image_size = metallic.texture_descriptor.size;
+            let metallic_components =
+                metallic.texture_descriptor.format.describe().components as usize;
+            let rough_components = rough.texture_descriptor.format.describe().components as usize;
+            let metallic_rough: Vec<_> = metallic
+                .data
+                .chunks(metallic_components)
+                .zip(rough.data.chunks(rough_components))
+                .flat_map(|(metallic, rough)| {
+                    [0, combine_colors(rough), combine_colors(metallic), 255]
+                })
+                .collect();
+            let metallic_rough = Image::new(image_size, D2, metallic_rough, Rgba8UnormSrgb);
+            images.insert("Metallic_Roughness", metallic_rough);
+            Some(())
+        };
+        run();
+    },
+    with_textures: |handle, textures| {
+        // return early if we detect this material is not Maya's PBR material
+        let mat_maya_type = handle.get_i32("Maya|TypeId");
+        if mat_maya_type != Some(maya_consts::PBR_TYPE_ID) {
+            return None;
+        }
+        let lerp = |from, to, stride| from + (to - from) * stride;
+        // Maya has fields that tells how much of the texture should be
+        // used in the final computation of the value vs the baseline value.
+        // We set the `metallic` and `perceptual_roughness` to
+        // lerp(baseline_value, fully_texture_value, use_map)
+        // so if `use_map` is 1.0, only the texture pixel counts,
+        // while if it is 0.0, only the baseline count, and anything inbetween
+        // is a mix of the two.
+        let has_rm_texture = textures.contains_key("Metallic_Roughness");
+        let use_texture = if has_rm_texture { 1.0 } else { 0.0 };
+        let use_metallic = handle
+            .get_f32("Maya|use_metallic_map")
+            .unwrap_or(use_texture);
+        let use_roughness = handle
+            .get_f32("Maya|use_roughness_map")
+            .unwrap_or(use_texture);
+        let metallic = handle
+            .get_f32("Maya|metallic")
+            .unwrap_or(maya_consts::DEFAULT_METALIC);
+        let roughness = handle
+            .get_f32("Maya|roughness")
+            .unwrap_or(maya_consts::DEFAULT_ROUGHNESS);
+        Some(StandardMaterial {
+            flip_normal_map_y: true,
+            base_color_texture: textures.get("Maya|TEX_color_map").cloned(),
+            normal_map_texture: textures.get("Maya|TEX_normal_map").cloned(),
+            metallic_roughness_texture: textures.get("Metallic_Roughness").cloned(),
+            metallic: lerp(metallic, 1.0, use_metallic),
+            perceptual_roughness: lerp(roughness, 1.0, use_roughness),
+            occlusion_texture: textures.get("Maya|TEX_ao_map").cloned(),
+            emissive_texture: textures.get("Maya|TEX_emissive_map").cloned(),
+            alpha_mode: AlphaMode::Opaque,
+            ..Default::default()
+        })
+    },
 };
 
 /// The default fbx material loaders.
@@ -175,7 +268,7 @@ pub const LOAD_MAYA_PBR: MaterialLoader = MaterialLoader {
 /// [`FbxMaterialLoaders`]: crate::FbxMaterialLoaders
 pub const fn default_loader_order() -> &'static [MaterialLoader] {
     &[
-        #[cfg(feature = "maya_pbr")]
+        #[cfg(feature = "maya_3dsmax_pbr")]
         LOAD_MAYA_PBR,
         LOAD_LAMBERT_PHONG,
         LOAD_FALLBACK,

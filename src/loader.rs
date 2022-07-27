@@ -6,7 +6,7 @@ use bevy::{
     core::Name,
     ecs::world::{FromWorld, World},
     hierarchy::BuildWorldChildren,
-    log::{debug, error, info, warn},
+    log::{debug, error},
     math::{DVec2, DVec3, Vec2},
     pbr::{PbrBundle, StandardMaterial},
     render::{
@@ -154,8 +154,9 @@ impl<'b, 'w> Loader<'b, 'w> {
         let load_context = self.load_context;
         load_context.set_labeled_asset("FbxScene", LoadedAsset::new(scene));
 
-        load_context.set_labeled_asset("Scene", LoadedAsset::new(generate_scene(meshes)));
-        info!(
+        let scene = generate_scene(meshes);
+        load_context.set_labeled_asset("Scene", LoadedAsset::new(scene));
+        debug!(
             "Successfully loaded scene {}#FbxScene",
             load_context.path().to_string_lossy(),
         );
@@ -171,7 +172,6 @@ impl<'b, 'w> Loader<'b, 'w> {
             Some(name) if !name.is_empty() => format!("FbxMesh@{name}/Primitive"),
             _ => format!("FbxMesh{}/Primitive", mesh_obj.object_id().raw()),
         };
-        info!("Loading geometry mesh: {label}");
 
         #[cfg(feature = "profile")]
         let _load_geometry_mesh = info_span!("load_geometry_mesh", label = &label).entered();
@@ -340,8 +340,6 @@ impl<'b, 'w> Loader<'b, 'w> {
 
                 let label = format!("{label}{i}");
 
-                info!("Successfully loaded geometry mesh: {label}");
-
                 let handle = self
                     .load_context
                     .set_labeled_asset(&label, LoadedAsset::new(material_mesh));
@@ -363,7 +361,7 @@ impl<'b, 'w> Loader<'b, 'w> {
         } else {
             format!("FbxMesh{}", mesh_obj.object_id().raw())
         };
-        info!("Loading FBX mesh: {label}");
+        debug!("Loading FBX mesh: {label}");
 
         let bevy_obj = mesh_obj.geometry().context("Failed to get geometry")?;
 
@@ -395,8 +393,6 @@ impl<'b, 'w> Loader<'b, 'w> {
             .load_context
             .set_labeled_asset(&label, LoadedAsset::new(mesh.clone()));
 
-        info!("Successfully loaded FBX mesh: {label}");
-
         self.scene.meshes.insert(mesh_handle);
         Ok(mesh)
     }
@@ -405,7 +401,7 @@ impl<'b, 'w> Loader<'b, 'w> {
         &mut self,
         video_clip_obj: object::video::ClipHandle<'_>,
     ) -> anyhow::Result<Image> {
-        info!("Loading texture image: {:?}", video_clip_obj.name());
+        debug!("Loading texture image: {:?}", video_clip_obj.name());
 
         let relative_filename = video_clip_obj
             .relative_filename()
@@ -437,8 +433,7 @@ impl<'b, 'w> Loader<'b, 'w> {
             is_srgb,
         );
         let image = image.context("Failed to read image buffer data")?;
-
-        info!(
+        debug!(
             "Successfully loaded texture image: {:?}",
             video_clip_obj.name()
         );
@@ -498,7 +493,7 @@ impl<'b, 'w> Loader<'b, 'w> {
             // Either copy the already-created handle or create a new asset
             // for each image or texture to load.
             let handle = if let Some(handle) = self.scene.textures.get(&handle_label) {
-                warn!("Already encountered texture: {label}, skipping");
+                debug!("Already encountered texture: {label}, skipping");
 
                 handle.clone()
             } else {
@@ -565,12 +560,11 @@ impl<'b, 'w> Loader<'b, 'w> {
             _ => format!("FbxMaterial{}", material_obj.object_id().raw()),
         };
         if let Some(handle) = self.scene.materials.get(&label) {
-            warn!("Already encountered material: {label}, skipping");
+            debug!("Already encountered material: {label}, skipping");
 
             return Ok(handle.clone_weak());
         }
-
-        info!("Loading FBX material: {label}");
+        debug!("Loading FBX material: {label}");
 
         let mut material = None;
         let loaders = self.material_loaders.clone();
@@ -584,8 +578,7 @@ impl<'b, 'w> Loader<'b, 'w> {
         let handle = self
             .load_context
             .set_labeled_asset(&label, LoadedAsset::new(material));
-
-        info!("Successfully loaded material: {label}");
+        debug!("Successfully loaded material: {label}");
 
         self.scene.materials.insert(label, handle.clone());
         Ok(handle)

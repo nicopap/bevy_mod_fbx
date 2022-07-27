@@ -10,6 +10,7 @@ keywords = ["bevy", "bevy_plugin", "fbx_loader"]
 
 [features]
 profile = []
+maya_3dsmax_pbr = []
 
 [dependencies]
 rgb = "0.8.33"
