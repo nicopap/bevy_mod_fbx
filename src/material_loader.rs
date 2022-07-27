@@ -173,6 +173,7 @@ pub const LOAD_MAYA_PBR: MaterialLoader = MaterialLoader {
     // are encoded in texture formats that can be stored as
     // a byte array in CPU memory.
     // This is not the case for compressed formats such as KTX or DDS
+    // FIXME: this also assumes the texture channels are 8 bit.
     preprocess_textures: |material_handle, images| {
         use bevy::render::render_resource::{TextureDimension::D2, TextureFormat::Rgba8UnormSrgb};
         let mut run = || {
