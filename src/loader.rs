@@ -6,7 +6,7 @@ use bevy::{
     core::Name,
     ecs::world::{FromWorld, World},
     hierarchy::BuildWorldChildren,
-    log::{debug, error, trace},
+    log::{debug, error},
     math::{DVec2, DVec3, Vec2},
     pbr::{PbrBundle, StandardMaterial},
     render::{
@@ -28,6 +28,9 @@ use fbxcel_dom::{
         Document,
     },
 };
+
+#[cfg(feature = "profile")]
+use bevy::log::info_span;
 
 use crate::{
     data::{FbxMesh, FbxScene},
@@ -97,6 +100,10 @@ impl AssetLoader for FbxLoader {
 
 fn generate_scene(meshes: Vec<FbxMesh>) -> Scene {
     let mut scene_world = World::default();
+
+    #[cfg(feature = "profile")]
+    let generate_scene = info_span!("generate_scene");
+
     scene_world
         .spawn()
         .insert_bundle(VisibilityBundle::default())
@@ -115,6 +122,10 @@ fn generate_scene(meshes: Vec<FbxMesh>) -> Scene {
                 }
             }
         });
+
+    #[cfg(feature = "profile")]
+    drop(generate_scene);
+
     Scene::new(scene_world)
 }
 
@@ -161,7 +172,12 @@ impl<'b, 'w> Loader<'b, 'w> {
             Some(name) if !name.is_empty() => format!("FbxMesh@{name}/Primitive"),
             _ => format!("FbxMesh{}/Primitive", mesh_obj.object_id().raw()),
         };
-        trace!("Loading geometry mesh: {label}");
+
+        #[cfg(feature = "profile")]
+        let _load_geometry_mesh = info_span!("load_geometry_mesh", label = &label).entered();
+
+        #[cfg(feature = "profile")]
+        let triangulate_mesh = info_span!("traingulate_mesh", label = &label).entered();
 
         let polygon_vertices = mesh_obj
             .polygon_vertices()
@@ -169,6 +185,9 @@ impl<'b, 'w> Loader<'b, 'w> {
         let triangle_pvi_indices = polygon_vertices
             .triangulate_each(triangulate::triangulate)
             .context("Triangulation failed")?;
+
+        #[cfg(feature = "profile")]
+        drop(triangulate_mesh);
 
         // TODO this seems to duplicate vertices from neighboring triangles. We shouldn't
         // do that and instead set the indice attribute of the BevyMesh properly.
@@ -184,7 +203,8 @@ impl<'b, 'w> Loader<'b, 'w> {
             .map(get_position)
             .collect::<Result<Vec<_>, _>>()
             .context("Failed to reconstruct position vertices")?;
-        trace!("Expanded positions len: {:?}", positions.len());
+
+        debug!("Expand position lenght to {}", positions.len());
 
         let layer = mesh_obj
             .layers()
@@ -289,7 +309,8 @@ impl<'b, 'w> Loader<'b, 'w> {
         } else {
             vec![full_mesh_indices.clone()]
         };
-        trace!("material count for this mesh: {}", all_indices.len());
+
+        debug!("Material count for {label}: {}", all_indices.len());
 
         let mut mesh = BevyMesh::new(PrimitiveTopology::TriangleList);
         mesh.insert_attribute(
@@ -312,12 +333,12 @@ impl<'b, 'w> Loader<'b, 'w> {
             .into_iter()
             .enumerate()
             .map(|(i, material_indices)| {
-                trace!(" material {i} has {} vertices", material_indices.len());
+                debug!("Material {i} has {} vertices", material_indices.len());
+
                 let mut material_mesh = mesh.clone();
                 material_mesh.set_indices(Some(Indices::U32(material_indices)));
 
                 let label = format!("{label}{i}");
-                trace!("Successfully loaded geometry mesh: {label}");
 
                 let handle = self
                     .load_context
@@ -340,8 +361,7 @@ impl<'b, 'w> Loader<'b, 'w> {
         } else {
             format!("FbxMesh{}", mesh_obj.object_id().raw())
         };
-
-        trace!("Loading mesh: {label}");
+        debug!("Loading FBX mesh: {label}");
 
         let bevy_obj = mesh_obj.geometry().context("Failed to get geometry")?;
 
@@ -372,7 +392,6 @@ impl<'b, 'w> Loader<'b, 'w> {
         let mesh_handle = self
             .load_context
             .set_labeled_asset(&label, LoadedAsset::new(mesh.clone()));
-        trace!("Successfully loaded FBX mesh: {label}");
 
         self.scene.meshes.insert(mesh_handle);
         Ok(mesh)
@@ -382,12 +401,13 @@ impl<'b, 'w> Loader<'b, 'w> {
         &mut self,
         video_clip_obj: object::video::ClipHandle<'_>,
     ) -> anyhow::Result<Image> {
-        trace!("Loading texture image: {:?}", video_clip_obj.name());
+        debug!("Loading texture image: {:?}", video_clip_obj.name());
 
         let relative_filename = video_clip_obj
             .relative_filename()
             .context("Failed to get relative filename of texture image")?;
-        trace!("Relative filename: {:?}", relative_filename);
+        debug!("Relative filename: {:?}", relative_filename);
+
         let file_ext = Path::new(&relative_filename)
             .extension()
             .unwrap()
@@ -413,10 +433,11 @@ impl<'b, 'w> Loader<'b, 'w> {
             is_srgb,
         );
         let image = image.context("Failed to read image buffer data")?;
-        trace!(
+        debug!(
             "Successfully loaded texture image: {:?}",
             video_clip_obj.name()
         );
+
         Ok(image)
     }
 
@@ -472,7 +493,8 @@ impl<'b, 'w> Loader<'b, 'w> {
             // Either copy the already-created handle or create a new asset
             // for each image or texture to load.
             let handle = if let Some(handle) = self.scene.textures.get(&handle_label) {
-                trace!("already encountered texture: {label}, skipping");
+                debug!("Already encountered texture: {label}, skipping");
+
                 handle.clone()
             } else {
                 let texture = match texture {
@@ -490,6 +512,7 @@ impl<'b, 'w> Loader<'b, 'w> {
         // 4. Call with all the texture handles
         Ok(with_textures(material_obj, texture_handles))
     }
+
     async fn get_texture(
         &mut self,
         texture_obj: object::texture::TextureHandle<'_>,
@@ -527,6 +550,7 @@ impl<'b, 'w> Loader<'b, 'w> {
         });
         Ok(image)
     }
+
     async fn load_material(
         &mut self,
         material_obj: object::material::MaterialHandle<'_>,
@@ -536,11 +560,11 @@ impl<'b, 'w> Loader<'b, 'w> {
             _ => format!("FbxMaterial{}", material_obj.object_id().raw()),
         };
         if let Some(handle) = self.scene.materials.get(&label) {
-            trace!("already encountered material: {label}, skipping");
+            debug!("Already encountered material: {label}, skipping");
+
             return Ok(handle.clone_weak());
         }
-
-        trace!("Loading material: {label}");
+        debug!("Loading FBX material: {label}");
 
         let mut material = None;
         let loaders = self.material_loaders.clone();
@@ -554,7 +578,8 @@ impl<'b, 'w> Loader<'b, 'w> {
         let handle = self
             .load_context
             .set_labeled_asset(&label, LoadedAsset::new(material));
-        trace!("Successfully loaded material: {label}");
+        debug!("Successfully loaded material: {label}");
+
         self.scene.materials.insert(label, handle.clone());
         Ok(handle)
     }
