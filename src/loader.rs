@@ -143,7 +143,8 @@ impl<'b, 'w> Loader<'b, 'w> {
         let load_context = self.load_context;
         load_context.set_labeled_asset("FbxScene", LoadedAsset::new(scene));
 
-        load_context.set_labeled_asset("Scene", LoadedAsset::new(generate_scene(meshes)));
+        let scene = generate_scene(meshes);
+        load_context.set_labeled_asset("Scene", LoadedAsset::new(scene));
         debug!(
             "Successfully loaded scene {}#FbxScene",
             load_context.path().to_string_lossy(),
