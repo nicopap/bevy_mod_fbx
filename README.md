@@ -2,6 +2,25 @@
 
 Autodesk Filmbox (*.fbx) loader for Bevy Engine.
 
+### Cargo features
+
+#### `profile`
+
+Enables spans,
+in combination with bevy's `bevy/trace` feature,
+you can generate profiling reports you can open with any trace reading software.
+Useful for debugging why your assets are so slow to load.
+
+#### `maya_3dsmax_pbr`
+
+Enable handling of Maya's PBR material extension for FBX (presumebly also 3DS max).
+This is highly experimental and only tested with a single model!
+Please report if your model's materials do not load properly.
+
+This material loader do not work with every type of texture files,
+the textures must be readable from CPU and have each component (color channel)
+be exactly 8 bits (such as PNG).
+
 ### Limitations
 
 > **NOTE**: If you find more limitations, file an issue!
