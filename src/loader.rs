@@ -34,15 +34,17 @@ use bevy::log::info_span;
 
 use crate::{
     data::{FbxMesh, FbxScene},
+    utils::fbx_extend::GlobalSettingsExt,
     utils::triangulate,
     MaterialLoader,
 };
 
 /// How much to scale down FBX stuff.
-const FBX_SCALE: f64 = 100.0;
+const FALLBACK_FBX_SCALE: f64 = 100.0;
 
 pub struct Loader<'b, 'w> {
     scene: FbxScene,
+    fbx_scale: f64,
     load_context: &'b mut LoadContext<'w>,
     suported_compressed_formats: CompressedImageFormats,
     material_loaders: Vec<MaterialLoader>,
@@ -137,6 +139,7 @@ impl<'b, 'w> Loader<'b, 'w> {
     ) -> Self {
         Self {
             scene: FbxScene::default(),
+            fbx_scale: FALLBACK_FBX_SCALE,
             load_context,
             material_loaders: loaders,
             suported_compressed_formats: formats,
@@ -145,6 +148,9 @@ impl<'b, 'w> Loader<'b, 'w> {
 
     async fn load(mut self, doc: Document) -> anyhow::Result<()> {
         let mut meshes = Vec::new();
+        if let Some(fbx_scale) = doc.global_settings().and_then(|g| g.fbx_scale()) {
+            self.fbx_scale = fbx_scale;
+        }
         for obj in doc.objects() {
             if let TypedObjectHandle::Model(TypedModelHandle::Mesh(mesh)) = obj.get_typed() {
                 meshes.push(self.load_mesh(mesh).await?);
@@ -196,7 +202,7 @@ impl<'b, 'w> Loader<'b, 'w> {
             let point = polygon_vertices
                 .control_point(cpi)
                 .ok_or_else(|| anyhow!("Failed to get control point: cpi={:?}", cpi))?;
-            Ok((DVec3::from(point) / FBX_SCALE).as_vec3().into())
+            Ok((DVec3::from(point) / self.fbx_scale).as_vec3().into())
         };
         let positions = triangle_pvi_indices
             .iter_control_point_indices()

@@ -16,13 +16,14 @@ Autodesk Filmbox (*.fbx) loader for Bevy Engine.
 - [X] Write basic loader
 - [X] WebAssembly support
 - [X] Load textures
-- [ ] Expand/rewrite triangulator ([#11](https://github.com/HeavyRain266/bevy_fbx/issues/11))
-- [ ] Proper scaling based on FBX config scale ([#10](https://github.com/HeavyRain266/bevy_fbx/issues/10))
 - [X] Support arbitrary material loading.
 - [X] Support Maya's PBR
-- [ ] Convert lambert into PBR and load materials ([#12](https://github.com/HeavyRain266/bevy_fbx/issues/12))
+- [X] Proper scaling based on FBX config scale ([#10](https://github.com/HeavyRain266/bevy_fbx/issues/10))
+- [ ] Proper handling of Coordinate system
 - [ ] Support `bevy_animation` as optional feature ([#13](https://github.com/HeavyRain266/bevy_fbx/issues/13))
 - [ ] Provide examples with usage of complex scenes ([#6](https://github.com/HeavyRain266/bevy_fbx/issues/6))
+- [ ] Convert lambert into PBR and load materials ([#12](https://github.com/HeavyRain266/bevy_fbx/issues/12))
+- [ ] Expand/rewrite triangulator ([#11](https://github.com/HeavyRain266/bevy_fbx/issues/11))
 
 ### Examples
 

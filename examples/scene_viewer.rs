@@ -48,8 +48,7 @@ Controls:
     })
     .insert_resource(LogSettings {
         level: Level::INFO,
-        filter: "fbxcel=info,fbxcel_dom=info,wgpu=warn,bevy_ecs=info,naga=info,gilrs=info,bevy_fbx=debug"
-            .to_string(),
+        ..Default::default()
     })
     .insert_resource(AssetServerSettings {
         asset_folder: std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string()),

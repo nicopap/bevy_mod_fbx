@@ -1,9 +1,15 @@
 //! Collection of temporary extensions to the fbxcell_dom types
 //! until they are merged upstream.
 
-use fbxcel_dom::v7400::object::{
-    material::MaterialHandle, property::loaders::PrimitiveLoader, texture::TextureHandle,
-    TypedObjectHandle,
+use fbxcel_dom::{
+    fbxcel::low::v7400::AttributeValue,
+    v7400::{
+        object::{
+            material::MaterialHandle, property::loaders::PrimitiveLoader, texture::TextureHandle,
+            TypedObjectHandle,
+        },
+        GlobalSettings,
+    },
 };
 
 pub trait MaterialHandleExt<'a> {
@@ -47,5 +53,19 @@ impl<'a> MaterialHandleQuickPropsExt<'a> for MaterialHandle<'a> {
         let props = self.properties();
         let prop = props.get_property(field)?;
         prop.load_value(PrimitiveLoader::<bool>::new()).ok()
+    }
+}
+
+pub trait GlobalSettingsExt<'a> {
+    fn fbx_scale(&self) -> Option<f64>;
+}
+impl<'a> GlobalSettingsExt<'a> for GlobalSettings<'a> {
+    fn fbx_scale(&self) -> Option<f64> {
+        let prop = self.raw_properties().get_property("UnitScaleFactor")?;
+        let attribute = prop.value_part().get(0)?;
+        match attribute {
+            AttributeValue::F64(scale) => Some(*scale),
+            _ => None,
+        }
     }
 }
