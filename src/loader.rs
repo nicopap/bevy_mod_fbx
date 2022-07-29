@@ -5,10 +5,11 @@ use bevy::{
     asset::{AssetLoader, BoxedFuture, Handle, LoadContext, LoadedAsset},
     core::Name,
     ecs::world::{FromWorld, World},
-    hierarchy::BuildWorldChildren,
-    log::{debug, error},
+    hierarchy::{BuildWorldChildren, WorldChildBuilder},
+    log::{debug, error, info, trace},
     math::{DVec2, DVec3, Vec2},
     pbr::{PbrBundle, StandardMaterial},
+    prelude::Transform,
     render::{
         mesh::{Indices, Mesh as BevyMesh, PrimitiveTopology, VertexAttributeValues},
         render_resource::{AddressMode, SamplerDescriptor},
@@ -22,6 +23,7 @@ use bevy::{
 };
 use fbxcel_dom::{
     any::AnyDocument,
+    fbxcel::tree::v7400::{NodeHandle, NodeId},
     v7400::{
         data::{mesh::layer::TypedLayerElementHandle, texture::WrapMode},
         object::{self, model::TypedModelHandle, texture::TextureHandle, TypedObjectHandle},
@@ -33,8 +35,8 @@ use fbxcel_dom::{
 use bevy::log::info_span;
 
 use crate::{
-    data::{FbxMesh, FbxScene},
-    utils::fbx_extend::GlobalSettingsExt,
+    data::{FbxMesh, FbxObject, FbxScene},
+    utils::fbx_extend::{GlobalSettingsExt, NodeHandleTransformExt},
     utils::triangulate,
     MaterialLoader,
 };
@@ -100,35 +102,57 @@ impl AssetLoader for FbxLoader {
     }
 }
 
-fn generate_scene(meshes: Vec<FbxMesh>) -> Scene {
-    let mut scene_world = World::default();
-
+fn generate_scene(
+    root: NodeId,
+    hierarchy: &HashMap<NodeId, FbxObject>,
+    models: &HashMap<NodeId, FbxMesh>,
+) -> Scene {
     #[cfg(feature = "profile")]
-    let generate_scene = info_span!("generate_scene");
+    let _generate_scene_span = info_span!("generate_scene").entered();
 
+    let mut scene_world = World::default();
     scene_world
         .spawn()
         .insert_bundle(VisibilityBundle::default())
         .insert_bundle(TransformBundle::identity())
-        .with_children(|parent| {
-            for mesh in meshes {
-                for (mat, bevy_mesh) in mesh.materials.iter().zip(&mesh.bevy_mesh_handles) {
-                    let mut entity = parent.spawn_bundle(PbrBundle {
-                        mesh: bevy_mesh.clone(),
-                        material: mat.clone(),
-                        ..Default::default()
-                    });
-                    if let Some(name) = mesh.name.as_ref() {
-                        entity.insert(Name::new(name.clone()));
-                    }
+        .with_children(|commands| {
+            generate_scene_helper(root, commands, hierarchy, models);
+        });
+    Scene::new(scene_world)
+}
+fn generate_scene_helper(
+    current: NodeId,
+    commands: &mut WorldChildBuilder,
+    hierarchy: &HashMap<NodeId, FbxObject>,
+    models: &HashMap<NodeId, FbxMesh>,
+) {
+    let current_node = match hierarchy.get(&current) {
+        Some(node) => node,
+        None => return,
+    };
+    let mut entity = commands.spawn_bundle(VisibilityBundle::default());
+    entity.insert_bundle(TransformBundle::from_transform(current_node.transform));
+    // entity.insert_bundle(TransformBundle::default());
+    if let Some(name) = &current_node.name {
+        entity.insert(Name::new(name.clone()));
+    }
+    entity.with_children(|commands| {
+        if let Some(mesh) = models.get(&current) {
+            for (mat, bevy_mesh) in mesh.materials.iter().zip(&mesh.bevy_mesh_handles) {
+                let mut entity = commands.spawn_bundle(PbrBundle {
+                    mesh: bevy_mesh.clone(),
+                    material: mat.clone(),
+                    ..Default::default()
+                });
+                if let Some(name) = mesh.name.as_ref() {
+                    entity.insert(Name::new(name.clone()));
                 }
             }
-        });
-
-    #[cfg(feature = "profile")]
-    drop(generate_scene);
-
-    Scene::new(scene_world)
+        }
+        for node_id in &current_node.children {
+            generate_scene_helper(*node_id, commands, hierarchy, models);
+        }
+    });
 }
 
 impl<'b, 'w> Loader<'b, 'w> {
@@ -147,22 +171,32 @@ impl<'b, 'w> Loader<'b, 'w> {
     }
 
     async fn load(mut self, doc: Document) -> anyhow::Result<()> {
-        let mut meshes = Vec::new();
+        info!(
+            "Started loading scene {}#FbxScene",
+            self.load_context.path().to_string_lossy(),
+        );
+        let mut meshes = HashMap::new();
         if let Some(fbx_scale) = doc.global_settings().and_then(|g| g.fbx_scale()) {
             self.fbx_scale = fbx_scale;
         }
+        let mut hierarchy = HashMap::default();
+        let transform_root = traverse_hierarchy(doc.tree().root(), &mut hierarchy);
+
         for obj in doc.objects() {
             if let TypedObjectHandle::Model(TypedModelHandle::Mesh(mesh)) = obj.get_typed() {
-                meshes.push(self.load_mesh(mesh).await?);
+                let node_id: NodeId = *obj.object_node_id();
+                meshes.insert(node_id, self.load_mesh(mesh).await?);
             }
         }
-        let scene = self.scene;
+        let mut scene = self.scene;
+        scene.hierarchy = hierarchy.clone();
+        scene.root = Some(transform_root);
         let load_context = self.load_context;
         load_context.set_labeled_asset("FbxScene", LoadedAsset::new(scene));
 
-        let scene = generate_scene(meshes);
+        let scene = generate_scene(transform_root, &hierarchy, &meshes);
         load_context.set_labeled_asset("Scene", LoadedAsset::new(scene));
-        debug!(
+        info!(
             "Successfully loaded scene {}#FbxScene",
             load_context.path().to_string_lossy(),
         );
@@ -178,6 +212,10 @@ impl<'b, 'w> Loader<'b, 'w> {
             Some(name) if !name.is_empty() => format!("FbxMesh@{name}/Primitive"),
             _ => format!("FbxMesh{}/Primitive", mesh_obj.object_id().raw()),
         };
+        trace!(
+            "loading geometry mesh for node_id: {:?}",
+            mesh_obj.object_node_id()
+        );
 
         #[cfg(feature = "profile")]
         let _load_geometry_mesh = info_span!("load_geometry_mesh", label = &label).entered();
@@ -399,7 +437,9 @@ impl<'b, 'w> Loader<'b, 'w> {
             .load_context
             .set_labeled_asset(&label, LoadedAsset::new(mesh.clone()));
 
-        self.scene.meshes.insert(mesh_handle);
+        let node_id = *mesh_obj.object_node_id();
+        self.scene.meshes.insert(node_id, mesh_handle);
+
         Ok(mesh)
     }
 
@@ -589,4 +629,45 @@ impl<'b, 'w> Loader<'b, 'w> {
         self.scene.materials.insert(label, handle.clone());
         Ok(handle)
     }
+}
+
+fn traverse_hierarchy(node: NodeHandle, hierarchy: &mut HashMap<NodeId, FbxObject>) -> NodeId {
+    #[cfg(feature = "profile")]
+    let _hierarchy_span = info_span!("traverse_fbx_hierarchy").entered();
+
+    if let Some(node) = node.first_child_by_name("Objects") {
+        traverse_hierarchy_helper(node, hierarchy);
+        info!("Tree has {} nodes", hierarchy.len());
+        trace!("root: {:?}", node.node_id());
+        // trace!("{hierarchy:#?}");
+        node.node_id()
+    } else {
+        error!("Couldn't find the FBX file's node transform hierarchy (`Objects` node). Cannot load a model without it");
+        node.node_id()
+    }
+}
+fn traverse_hierarchy_helper(node: NodeHandle, hierarchy: &mut HashMap<NodeId, FbxObject>) {
+    let name = node
+        .attributes()
+        .get(1)
+        .and_then(|s| s.get_string())
+        .map(|s| s.to_string());
+
+    let fbx_object = FbxObject {
+        name,
+        // TODO: the transform stuff needs to use the `ObjectHandle::properties`
+        // method over raw access to Properties70 attributes of `NodeHandle`.
+        transform: Transform {
+            translation: node.translation(),
+            scale: node.scale(),
+            rotation: node.rotation(),
+        },
+        children: node.children().map(|c| c.node_id()).collect(),
+    };
+    hierarchy.insert(node.node_id(), fbx_object);
+    node.children()
+        .filter(|c| c.name() == "Model")
+        .for_each(|child| {
+            traverse_hierarchy_helper(child, hierarchy);
+        });
 }
