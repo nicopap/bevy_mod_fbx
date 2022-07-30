@@ -138,6 +138,10 @@ fn generate_scene_helper(
     }
     entity.with_children(|commands| {
         if let Some(mesh) = models.get(&current) {
+            println!(
+                "material {:?} child of {:?}",
+                &mesh.name, &current_node.name
+            );
             for (mat, bevy_mesh) in mesh.materials.iter().zip(&mesh.bevy_mesh_handles) {
                 let mut entity = commands.spawn_bundle(PbrBundle {
                     mesh: bevy_mesh.clone(),
@@ -150,6 +154,9 @@ fn generate_scene_helper(
             }
         }
         for node_id in &current_node.children {
+            if let Some(foo) = hierarchy.get(node_id) {
+                println!("{:?} child of {:?}", &foo.name, &current_node.name);
+            }
             generate_scene_helper(*node_id, commands, hierarchy, models);
         }
     });

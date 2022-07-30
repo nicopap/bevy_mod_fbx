@@ -47,8 +47,8 @@ Controls:
         brightness: 1.0 / 5.0f32,
     })
     .insert_resource(LogSettings {
-        level: Level::INFO,
-        ..Default::default()
+        level: Level::WARN,
+        filter: "bevy_fbx=info".to_owned(),
     })
     .insert_resource(AssetServerSettings {
         asset_folder: std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string()),
@@ -112,7 +112,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     });
     commands.spawn_bundle(SceneBundle {
         scene: asset_server.load(&scene_path),
-        ..Default::default()
+        ..default()
     });
 }
 

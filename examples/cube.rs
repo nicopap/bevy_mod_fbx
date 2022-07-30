@@ -1,4 +1,9 @@
-use bevy::{prelude::*, render::camera::ScalingMode, window::close_on_esc};
+use bevy::{
+    log::{Level, LogSettings},
+    prelude::*,
+    render::camera::ScalingMode,
+    window::close_on_esc,
+};
 use bevy_fbx::FbxPlugin;
 
 fn main() {
@@ -10,6 +15,10 @@ fn main() {
         height: 574.0,
 
         ..default()
+    });
+    app.insert_resource(LogSettings {
+        level: Level::INFO,
+        filter: "bevy_fbx=trace,wgpu=warn".to_owned(),
     });
 
     app.add_plugins(DefaultPlugins);
