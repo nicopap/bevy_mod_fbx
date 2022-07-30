@@ -4,7 +4,7 @@ version = "0.1.0-dev"
 edition = "2021"
 repository = "https://github.com/HeavyRain266/bevy_fbx"
 exclude = ["assets/**/*", "scripts/**/*", ".github/**/*"]
-description = "Autodesl Filmbox (*.fbx) scene loader for Bevy Engine"
+description = "Autodesk Filmbox (*.fbx) loader for Bevy Engine"
 license = "MIT OR Apache-2.0"
 keywords = ["bevy", "bevy_plugin", "fbx_loader"]
 
@@ -28,7 +28,6 @@ features = [
   "bevy_render",
   "bevy_winit",
   "bevy_scene",
-  # "bevy_core_pipeline"
 ]
 
 # [dev-dependencies]
