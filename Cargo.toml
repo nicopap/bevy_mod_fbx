@@ -31,14 +31,6 @@ features = [
   # "bevy_core_pipeline"
 ]
 
-[[example]]
-name = "cube"
-path = "examples/cube.rs"
-
-[[example]]
-name = "scene_viewer"
-path = "examples/scene_viewer.rs"
-
 # [dev-dependencies]
 # bevy-inspector-egui = "0.11"
 
