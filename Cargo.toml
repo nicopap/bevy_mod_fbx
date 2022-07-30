@@ -20,17 +20,16 @@ glam = { version = "0.21", features = ["mint"] }
 fbxcel-dom = "0.0.9"
 
 [dependencies.bevy]
-version = "0.8.0-dev"
+version = "0.8.0"
 default-features = false
 features = [
   "tga",
   "bevy_pbr",
   "bevy_render",
   "bevy_winit",
+  "bevy_scene",
   # "bevy_core_pipeline"
 ]
-git = "https://github.com/bevyengine/bevy.git"
-rev = "619c30c036ddfceb66030922099961bd17b65e35"
 
 [[example]]
 name = "cube"
@@ -44,7 +43,7 @@ path = "examples/scene_viewer.rs"
 # bevy-inspector-egui = "0.11"
 
 [dev-dependencies.bevy]
-version = "0.8.0-dev"
+version = "0.8.0"
 default-features = false
 features = [
   "x11", #"wayland",
@@ -53,8 +52,7 @@ features = [
   "bevy_pbr",
   "bevy_render",
   "bevy_winit",
+  "bevy_scene",
   "filesystem_watcher",
   "bevy_core_pipeline"
 ]
-git = "https://github.com/bevyengine/bevy.git"
-rev = "619c30c036ddfceb66030922099961bd17b65e35"
