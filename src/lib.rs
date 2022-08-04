@@ -4,6 +4,7 @@ pub use data::{FbxMesh, FbxScene};
 pub use loader::FbxLoader;
 
 pub(crate) mod data;
+pub(crate) mod fbx_transform;
 pub(crate) mod loader;
 pub mod material_loader;
 pub(crate) mod utils;

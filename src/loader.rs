@@ -2,49 +2,53 @@ use std::path::Path;
 
 use anyhow::{anyhow, bail, Context};
 use bevy::{
-    asset::{AssetLoader, BoxedFuture, Handle, LoadContext, LoadedAsset},
-    core::Name,
-    ecs::world::{FromWorld, World},
-    hierarchy::BuildWorldChildren,
-    log::{debug, error},
+    asset::{AssetLoader, BoxedFuture, LoadContext, LoadedAsset},
     math::{DVec2, DVec3, Vec2},
-    pbr::{PbrBundle, StandardMaterial},
+    prelude::{
+        debug, error, info, trace, BuildWorldChildren, FromWorld, Handle, Image, Mesh, Name,
+        PbrBundle, Scene, StandardMaterial, Transform, TransformBundle, VisibilityBundle, World,
+        WorldChildBuilder,
+    },
     render::{
-        mesh::{Indices, Mesh as BevyMesh, PrimitiveTopology, VertexAttributeValues},
+        mesh::{Indices, PrimitiveTopology, VertexAttributeValues},
         render_resource::{AddressMode, SamplerDescriptor},
         renderer::RenderDevice,
-        texture::{CompressedImageFormats, Image, ImageSampler, ImageType},
-        view::VisibilityBundle,
+        texture::{CompressedImageFormats, ImageSampler, ImageType},
     },
-    scene::Scene,
-    transform::TransformBundle,
     utils::HashMap,
 };
 use fbxcel_dom::{
     any::AnyDocument,
     v7400::{
         data::{mesh::layer::TypedLayerElementHandle, texture::WrapMode},
-        object::{self, model::TypedModelHandle, texture::TextureHandle, TypedObjectHandle},
+        object::{
+            self,
+            model::{ModelHandle, TypedModelHandle},
+            texture::TextureHandle,
+            ObjectId, TypedObjectHandle,
+        },
         Document,
     },
 };
 
 #[cfg(feature = "profile")]
 use bevy::log::info_span;
+use glam::Vec3;
 
 use crate::{
-    data::{FbxMesh, FbxScene},
-    utils::fbx_extend::GlobalSettingsExt,
+    data::{FbxMesh, FbxObject, FbxScene},
+    fbx_transform::FbxTransform,
+    utils::fbx_extend::{GlobalSettingsExt, ModelTreeRootExt},
     utils::triangulate,
     MaterialLoader,
 };
 
-/// How much to scale down FBX stuff.
-const FALLBACK_FBX_SCALE: f64 = 100.0;
+/// Bevy is kinda "meters" based while FBX (or rather: stuff exported by maya) is in "centimeters"
+/// Although it doesn't mean much in practice.
+const FBX_TO_BEVY_SCALE_FACTOR: f32 = 0.01;
 
 pub struct Loader<'b, 'w> {
     scene: FbxScene,
-    fbx_scale: f64,
     load_context: &'b mut LoadContext<'w>,
     suported_compressed_formats: CompressedImageFormats,
     material_loaders: Vec<MaterialLoader>,
@@ -100,35 +104,62 @@ impl AssetLoader for FbxLoader {
     }
 }
 
-fn generate_scene(meshes: Vec<FbxMesh>) -> Scene {
-    let mut scene_world = World::default();
-
+fn spawn_scene(
+    fbx_file_scale: f32,
+    roots: &[ObjectId],
+    hierarchy: &HashMap<ObjectId, FbxObject>,
+    models: &HashMap<ObjectId, FbxMesh>,
+) -> Scene {
     #[cfg(feature = "profile")]
-    let generate_scene = info_span!("generate_scene");
+    let _generate_scene_span = info_span!("generate_scene").entered();
 
+    let mut scene_world = World::default();
     scene_world
         .spawn()
         .insert_bundle(VisibilityBundle::default())
-        .insert_bundle(TransformBundle::identity())
-        .with_children(|parent| {
-            for mesh in meshes {
-                for (mat, bevy_mesh) in mesh.materials.iter().zip(&mesh.bevy_mesh_handles) {
-                    let mut entity = parent.spawn_bundle(PbrBundle {
-                        mesh: bevy_mesh.clone(),
-                        material: mat.clone(),
-                        ..Default::default()
-                    });
-                    if let Some(name) = mesh.name.as_ref() {
-                        entity.insert(Name::new(name.clone()));
-                    }
-                }
+        .insert_bundle(TransformBundle::from_transform(Transform::from_scale(
+            Vec3::ONE * FBX_TO_BEVY_SCALE_FACTOR * fbx_file_scale,
+        )))
+        .insert(Name::new("Fbx scene root"))
+        .with_children(|commands| {
+            for root in roots {
+                spawn_scene_rec(*root, commands, hierarchy, models);
             }
         });
-
-    #[cfg(feature = "profile")]
-    drop(generate_scene);
-
     Scene::new(scene_world)
+}
+fn spawn_scene_rec(
+    current: ObjectId,
+    commands: &mut WorldChildBuilder,
+    hierarchy: &HashMap<ObjectId, FbxObject>,
+    models: &HashMap<ObjectId, FbxMesh>,
+) {
+    let current_node = match hierarchy.get(&current) {
+        Some(node) => node,
+        None => return,
+    };
+    let mut entity = commands.spawn_bundle(VisibilityBundle::default());
+    entity.insert_bundle(TransformBundle::from_transform(current_node.transform));
+    if let Some(name) = &current_node.name {
+        entity.insert(Name::new(name.clone()));
+    }
+    entity.with_children(|commands| {
+        if let Some(mesh) = models.get(&current) {
+            for (mat, bevy_mesh) in mesh.materials.iter().zip(&mesh.bevy_mesh_handles) {
+                let mut entity = commands.spawn_bundle(PbrBundle {
+                    mesh: bevy_mesh.clone(),
+                    material: mat.clone(),
+                    ..Default::default()
+                });
+                if let Some(name) = mesh.name.as_ref() {
+                    entity.insert(Name::new(name.clone()));
+                }
+            }
+        }
+        for node_id in &current_node.children {
+            spawn_scene_rec(*node_id, commands, hierarchy, models);
+        }
+    });
 }
 
 impl<'b, 'w> Loader<'b, 'w> {
@@ -139,7 +170,6 @@ impl<'b, 'w> Loader<'b, 'w> {
     ) -> Self {
         Self {
             scene: FbxScene::default(),
-            fbx_scale: FALLBACK_FBX_SCALE,
             load_context,
             material_loaders: loaders,
             suported_compressed_formats: formats,
@@ -147,22 +177,38 @@ impl<'b, 'w> Loader<'b, 'w> {
     }
 
     async fn load(mut self, doc: Document) -> anyhow::Result<()> {
-        let mut meshes = Vec::new();
-        if let Some(fbx_scale) = doc.global_settings().and_then(|g| g.fbx_scale()) {
-            self.fbx_scale = fbx_scale;
+        info!(
+            "Started loading scene {}#FbxScene",
+            self.load_context.path().to_string_lossy(),
+        );
+        let mut meshes = HashMap::new();
+        let mut hierarchy = HashMap::new();
+
+        let fbx_scale = doc
+            .global_settings()
+            .and_then(|g| g.fbx_scale())
+            .unwrap_or(1.0);
+        let roots = doc.model_roots();
+        for root in &roots {
+            traverse_hierarchy(*root, &mut hierarchy);
         }
+
         for obj in doc.objects() {
             if let TypedObjectHandle::Model(TypedModelHandle::Mesh(mesh)) = obj.get_typed() {
-                meshes.push(self.load_mesh(mesh).await?);
+                meshes.insert(obj.object_id(), self.load_mesh(mesh).await?);
             }
         }
-        let scene = self.scene;
-        let load_context = self.load_context;
-        load_context.set_labeled_asset("FbxScene", LoadedAsset::new(scene));
+        let roots: Vec<_> = roots.into_iter().map(|obj| obj.object_id()).collect();
+        let scene = spawn_scene(fbx_scale as f32, &roots, &hierarchy, &meshes);
 
-        let scene = generate_scene(meshes);
+        let load_context = &mut self.load_context;
         load_context.set_labeled_asset("Scene", LoadedAsset::new(scene));
-        debug!(
+
+        let mut scene = self.scene;
+        scene.hierarchy = hierarchy.clone();
+        scene.roots = roots;
+        load_context.set_labeled_asset("FbxScene", LoadedAsset::new(scene));
+        info!(
             "Successfully loaded scene {}#FbxScene",
             load_context.path().to_string_lossy(),
         );
@@ -173,11 +219,15 @@ impl<'b, 'w> Loader<'b, 'w> {
         &mut self,
         mesh_obj: object::geometry::MeshHandle,
         num_materials: usize,
-    ) -> anyhow::Result<Vec<Handle<BevyMesh>>> {
+    ) -> anyhow::Result<Vec<Handle<Mesh>>> {
         let label = match mesh_obj.name() {
             Some(name) if !name.is_empty() => format!("FbxMesh@{name}/Primitive"),
             _ => format!("FbxMesh{}/Primitive", mesh_obj.object_id().raw()),
         };
+        trace!(
+            "loading geometry mesh for node_id: {:?}",
+            mesh_obj.object_node_id()
+        );
 
         #[cfg(feature = "profile")]
         let _load_geometry_mesh = info_span!("load_geometry_mesh", label = &label).entered();
@@ -196,13 +246,13 @@ impl<'b, 'w> Loader<'b, 'w> {
         drop(triangulate_mesh);
 
         // TODO this seems to duplicate vertices from neighboring triangles. We shouldn't
-        // do that and instead set the indice attribute of the BevyMesh properly.
+        // do that and instead set the indice attribute of the Mesh properly.
         let get_position = |pos: Option<_>| -> Result<_, anyhow::Error> {
             let cpi = pos.ok_or_else(|| anyhow!("Failed to get control point index"))?;
             let point = polygon_vertices
                 .control_point(cpi)
                 .ok_or_else(|| anyhow!("Failed to get control point: cpi={:?}", cpi))?;
-            Ok((DVec3::from(point) / self.fbx_scale).as_vec3().into())
+            Ok(DVec3::from(point).as_vec3().into())
         };
         let positions = triangle_pvi_indices
             .iter_control_point_indices()
@@ -318,17 +368,14 @@ impl<'b, 'w> Loader<'b, 'w> {
 
         debug!("Material count for {label}: {}", all_indices.len());
 
-        let mut mesh = BevyMesh::new(PrimitiveTopology::TriangleList);
+        let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
         mesh.insert_attribute(
-            BevyMesh::ATTRIBUTE_POSITION,
+            Mesh::ATTRIBUTE_POSITION,
             VertexAttributeValues::Float32x3(positions),
         );
+        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, VertexAttributeValues::Float32x2(uv));
         mesh.insert_attribute(
-            BevyMesh::ATTRIBUTE_UV_0,
-            VertexAttributeValues::Float32x2(uv),
-        );
-        mesh.insert_attribute(
-            BevyMesh::ATTRIBUTE_NORMAL,
+            Mesh::ATTRIBUTE_NORMAL,
             VertexAttributeValues::Float32x3(normals),
         );
         mesh.set_indices(Some(Indices::U32(full_mesh_indices)));
@@ -399,7 +446,8 @@ impl<'b, 'w> Loader<'b, 'w> {
             .load_context
             .set_labeled_asset(&label, LoadedAsset::new(mesh.clone()));
 
-        self.scene.meshes.insert(mesh_handle);
+        self.scene.meshes.insert(mesh_obj.object_id(), mesh_handle);
+
         Ok(mesh)
     }
 
@@ -589,4 +637,44 @@ impl<'b, 'w> Loader<'b, 'w> {
         self.scene.materials.insert(label, handle.clone());
         Ok(handle)
     }
+}
+
+fn traverse_hierarchy(node: ModelHandle, hierarchy: &mut HashMap<ObjectId, FbxObject>) {
+    #[cfg(feature = "profile")]
+    let _hierarchy_span = info_span!("traverse_fbx_hierarchy").entered();
+
+    traverse_hierarchy_rec(node, None, hierarchy);
+    debug!("Tree has {} nodes", hierarchy.len());
+    trace!("root: {:?}", node.object_node_id());
+}
+fn traverse_hierarchy_rec(
+    node: ModelHandle,
+    parent: Option<FbxTransform>,
+    hierarchy: &mut HashMap<ObjectId, FbxObject>,
+) -> bool {
+    let name = node.name().map(|s| s.to_owned());
+    let data = FbxTransform::from_node(node, parent);
+
+    let mut mesh_leaf = false;
+    node.child_models().for_each(|child| {
+        mesh_leaf |= traverse_hierarchy_rec(*child, Some(data), hierarchy);
+    });
+    if node.subclass() == "Mesh" {
+        mesh_leaf = true;
+    }
+    // Only keep nodes that have Mesh children
+    // (ie defines something visible in the scene)
+    // I've found some very unwindy FBX files with several thousand
+    // nodes that served no practical purposes,
+    // This also trims deformers and limb nodes, which we currently
+    // do not support
+    if mesh_leaf {
+        let fbx_object = FbxObject {
+            name,
+            transform: data.as_local_transform(parent.as_ref().map(|p| p.global)),
+            children: node.child_models().map(|c| c.object_id()).collect(),
+        };
+        hierarchy.insert(node.object_id(), fbx_object);
+    }
+    mesh_leaf
 }

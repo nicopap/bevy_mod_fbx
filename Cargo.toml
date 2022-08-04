@@ -16,6 +16,7 @@ maya_3dsmax_pbr = []
 rgb = "0.8.33"
 anyhow = "1.0.58"
 glam = { version = "0.21", features = ["mint"] }
+mint = "0.5"
 # fbxcel-dom = { version = "0.0.9", path = "../fbxcel-dom" }
 fbxcel-dom = "0.0.9"
 
@@ -30,8 +31,8 @@ features = [
   "bevy_scene",
 ]
 
-# [dev-dependencies]
-# bevy-inspector-egui = "0.11"
+[dev-dependencies]
+bevy-inspector-egui = "0.12"
 
 [dev-dependencies.bevy]
 version = "0.8.0"
