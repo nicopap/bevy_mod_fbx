@@ -663,17 +663,30 @@ fn traverse_hierarchy_rec(
     node: ModelHandle,
     parent: Option<FbxTransform>,
     hierarchy: &mut HashMap<ObjectId, FbxObject>,
-) {
+) -> bool {
     let name = node.name().map(|s| s.to_owned());
     let data = FbxTransform::from_node(node, parent);
 
-    let fbx_object = FbxObject {
-        name,
-        transform: data.as_local_transform(parent.as_ref().map(|p| p.global)),
-        children: node.child_models().map(|c| c.object_id()).collect(),
-    };
-    hierarchy.insert(node.object_id(), fbx_object);
+    let mut mesh_leaf = false;
     node.child_models().for_each(|child| {
-        traverse_hierarchy_rec(*child, Some(data), hierarchy);
+        mesh_leaf |= traverse_hierarchy_rec(*child, Some(data), hierarchy);
     });
+    if node.subclass() == "Mesh" {
+        mesh_leaf = true;
+    }
+    // Only keep nodes that have Mesh children
+    // (ie defines something visible in the scene)
+    // I've found some very unwindy FBX files with several thousand
+    // nodes that served no practical purposes,
+    // This also trims deformers and limb nodes, which we currently
+    // do not support
+    if mesh_leaf {
+        let fbx_object = FbxObject {
+            name,
+            transform: data.as_local_transform(parent.as_ref().map(|p| p.global)),
+            children: node.child_models().map(|c| c.object_id()).collect(),
+        };
+        hierarchy.insert(node.object_id(), fbx_object);
+    }
+    mesh_leaf
 }
