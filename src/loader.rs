@@ -23,20 +23,26 @@ use bevy::{
 };
 use fbxcel_dom::{
     any::AnyDocument,
-    fbxcel::tree::v7400::{NodeHandle, NodeId},
     v7400::{
         data::{mesh::layer::TypedLayerElementHandle, texture::WrapMode},
-        object::{self, model::TypedModelHandle, texture::TextureHandle, TypedObjectHandle},
+        object::{
+            self,
+            model::{ModelHandle, TypedModelHandle},
+            texture::TextureHandle,
+            ObjectHandle, ObjectId, TypedObjectHandle,
+        },
         Document,
     },
 };
 
 #[cfg(feature = "profile")]
 use bevy::log::info_span;
+use glam::Vec3;
 
 use crate::{
     data::{FbxMesh, FbxObject, FbxScene},
-    utils::fbx_extend::{GlobalSettingsExt, NodeHandleTransformExt},
+    fbx_transform::FbxTransform,
+    utils::fbx_extend::{GlobalSettingsExt, ModelTreeRootExt},
     utils::triangulate,
     MaterialLoader,
 };
@@ -46,6 +52,11 @@ const FALLBACK_FBX_SCALE: f64 = 100.0;
 
 pub struct Loader<'b, 'w> {
     scene: FbxScene,
+    // TODO: it seems the bistro scene is supposed to be 0.016 it's current size
+    // maybe we are doing something wrong here?
+    // TODO: test with Xo's model to check how it works, maybe
+    // the scale is a relation between OriginalUnitScale and UnitScale, rather
+    // than just UnitScale
     fbx_scale: f64,
     load_context: &'b mut LoadContext<'w>,
     suported_compressed_formats: CompressedImageFormats,
@@ -102,10 +113,10 @@ impl AssetLoader for FbxLoader {
     }
 }
 
-fn generate_scene(
-    root: NodeId,
-    hierarchy: &HashMap<NodeId, FbxObject>,
-    models: &HashMap<NodeId, FbxMesh>,
+fn spawn_scene(
+    root: ObjectId,
+    hierarchy: &HashMap<ObjectId, FbxObject>,
+    models: &HashMap<ObjectId, FbxMesh>,
 ) -> Scene {
     #[cfg(feature = "profile")]
     let _generate_scene_span = info_span!("generate_scene").entered();
@@ -114,17 +125,21 @@ fn generate_scene(
     scene_world
         .spawn()
         .insert_bundle(VisibilityBundle::default())
-        .insert_bundle(TransformBundle::identity())
+        .insert_bundle(TransformBundle {
+            local: Transform::from_scale(Vec3::ONE * 100.0),
+            ..Default::default()
+        })
+        .insert(Name::new("Fbx scene Root"))
         .with_children(|commands| {
-            generate_scene_helper(root, commands, hierarchy, models);
+            spawn_scene_rec(root, commands, hierarchy, models);
         });
     Scene::new(scene_world)
 }
-fn generate_scene_helper(
-    current: NodeId,
+fn spawn_scene_rec(
+    current: ObjectId,
     commands: &mut WorldChildBuilder,
-    hierarchy: &HashMap<NodeId, FbxObject>,
-    models: &HashMap<NodeId, FbxMesh>,
+    hierarchy: &HashMap<ObjectId, FbxObject>,
+    models: &HashMap<ObjectId, FbxMesh>,
 ) {
     let current_node = match hierarchy.get(&current) {
         Some(node) => node,
@@ -132,16 +147,11 @@ fn generate_scene_helper(
     };
     let mut entity = commands.spawn_bundle(VisibilityBundle::default());
     entity.insert_bundle(TransformBundle::from_transform(current_node.transform));
-    // entity.insert_bundle(TransformBundle::default());
     if let Some(name) = &current_node.name {
         entity.insert(Name::new(name.clone()));
     }
     entity.with_children(|commands| {
         if let Some(mesh) = models.get(&current) {
-            println!(
-                "material {:?} child of {:?}",
-                &mesh.name, &current_node.name
-            );
             for (mat, bevy_mesh) in mesh.materials.iter().zip(&mesh.bevy_mesh_handles) {
                 let mut entity = commands.spawn_bundle(PbrBundle {
                     mesh: bevy_mesh.clone(),
@@ -154,10 +164,7 @@ fn generate_scene_helper(
             }
         }
         for node_id in &current_node.children {
-            if let Some(foo) = hierarchy.get(node_id) {
-                println!("{:?} child of {:?}", &foo.name, &current_node.name);
-            }
-            generate_scene_helper(*node_id, commands, hierarchy, models);
+            spawn_scene_rec(*node_id, commands, hierarchy, models);
         }
     });
 }
@@ -187,21 +194,22 @@ impl<'b, 'w> Loader<'b, 'w> {
             self.fbx_scale = fbx_scale;
         }
         let mut hierarchy = HashMap::default();
-        let transform_root = traverse_hierarchy(doc.tree().root(), &mut hierarchy);
+        let root = doc.model_root();
+        let transform_root = root.object_id();
+        traverse_hierarchy(root, &mut hierarchy);
 
         for obj in doc.objects() {
             if let TypedObjectHandle::Model(TypedModelHandle::Mesh(mesh)) = obj.get_typed() {
-                let node_id: NodeId = *obj.object_node_id();
-                meshes.insert(node_id, self.load_mesh(mesh).await?);
+                meshes.insert(obj.object_id(), self.load_mesh(mesh).await?);
             }
         }
         let mut scene = self.scene;
         scene.hierarchy = hierarchy.clone();
-        scene.root = Some(transform_root);
+        scene.root = Some(ObjectHandle::object_id(&root));
         let load_context = self.load_context;
         load_context.set_labeled_asset("FbxScene", LoadedAsset::new(scene));
 
-        let scene = generate_scene(transform_root, &hierarchy, &meshes);
+        let scene = spawn_scene(transform_root, &hierarchy, &meshes);
         load_context.set_labeled_asset("Scene", LoadedAsset::new(scene));
         info!(
             "Successfully loaded scene {}#FbxScene",
@@ -444,8 +452,7 @@ impl<'b, 'w> Loader<'b, 'w> {
             .load_context
             .set_labeled_asset(&label, LoadedAsset::new(mesh.clone()));
 
-        let node_id = *mesh_obj.object_node_id();
-        self.scene.meshes.insert(node_id, mesh_handle);
+        self.scene.meshes.insert(mesh_obj.object_id(), mesh_handle);
 
         Ok(mesh)
     }
@@ -638,43 +645,29 @@ impl<'b, 'w> Loader<'b, 'w> {
     }
 }
 
-fn traverse_hierarchy(node: NodeHandle, hierarchy: &mut HashMap<NodeId, FbxObject>) -> NodeId {
+fn traverse_hierarchy(node: ModelHandle, hierarchy: &mut HashMap<ObjectId, FbxObject>) {
     #[cfg(feature = "profile")]
     let _hierarchy_span = info_span!("traverse_fbx_hierarchy").entered();
 
-    if let Some(node) = node.first_child_by_name("Objects") {
-        traverse_hierarchy_helper(node, hierarchy);
-        info!("Tree has {} nodes", hierarchy.len());
-        trace!("root: {:?}", node.node_id());
-        // trace!("{hierarchy:#?}");
-        node.node_id()
-    } else {
-        error!("Couldn't find the FBX file's node transform hierarchy (`Objects` node). Cannot load a model without it");
-        node.node_id()
-    }
+    traverse_hierarchy_rec(node, None, hierarchy);
+    debug!("Tree has {} nodes", hierarchy.len());
+    trace!("root: {:?}", node.object_node_id());
 }
-fn traverse_hierarchy_helper(node: NodeHandle, hierarchy: &mut HashMap<NodeId, FbxObject>) {
-    let name = node
-        .attributes()
-        .get(1)
-        .and_then(|s| s.get_string())
-        .map(|s| s.to_string());
+fn traverse_hierarchy_rec(
+    node: ModelHandle,
+    parent: Option<FbxTransform>,
+    hierarchy: &mut HashMap<ObjectId, FbxObject>,
+) {
+    let name = node.name().map(|s| s.to_owned());
+    let data = FbxTransform::from_node(node, parent);
 
     let fbx_object = FbxObject {
         name,
-        // TODO: the transform stuff needs to use the `ObjectHandle::properties`
-        // method over raw access to Properties70 attributes of `NodeHandle`.
-        transform: Transform {
-            translation: node.translation(),
-            scale: node.scale(),
-            rotation: node.rotation(),
-        },
-        children: node.children().map(|c| c.node_id()).collect(),
+        transform: data.to_local_transform(parent.as_ref().map(|p| p.global)),
+        children: node.child_models().map(|c| c.object_id()).collect(),
     };
-    hierarchy.insert(node.node_id(), fbx_object);
-    node.children()
-        .filter(|c| c.name() == "Model")
-        .for_each(|child| {
-            traverse_hierarchy_helper(child, hierarchy);
-        });
+    hierarchy.insert(node.object_id(), fbx_object);
+    node.child_models().for_each(|child| {
+        traverse_hierarchy_rec(*child, Some(data), hierarchy);
+    });
 }

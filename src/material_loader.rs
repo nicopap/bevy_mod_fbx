@@ -96,6 +96,8 @@ pub const LOAD_LAMBERT_PHONG: MaterialLoader = MaterialLoader {
             .map_or(0.8, |s| (2.0 / (2.0 + s)).sqrt());
         Some(StandardMaterial {
             alpha_mode: if is_transparent { Blend } else { Opaque },
+            // For bistro only
+            // alpha_mode: AlphaMode::Mask(0.8),
             base_color,
             metallic,
             perceptual_roughness: roughness as f32,
@@ -123,7 +125,7 @@ pub const LOAD_FALLBACK: MaterialLoader = MaterialLoader {
             .ok()
             .flatten()
             .map(|c| ColorAdapter(c).into())
-            .unwrap_or(Color::WHITE);
+            .unwrap_or(Color::PINK);
         let metallic = properties
             .specular()
             .ok()

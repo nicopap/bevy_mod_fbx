@@ -1,3 +1,5 @@
+// This file is heavily inspired by the Bevy scene_viewer.rs
+// found in the repository's tools folder.
 //! A simple FBX scene viewer made with Bevy.
 //!
 //! Just run `cargo run --release --example scene_viewer /path/to/model.fbx#Scene`,
@@ -15,7 +17,7 @@ use bevy::{
     window::close_on_esc,
 };
 use bevy_fbx::FbxPlugin;
-// use bevy_inspector_egui::WorldInspectorPlugin;
+use bevy_inspector_egui::WorldInspectorPlugin;
 
 use std::f32::consts::TAU;
 
@@ -59,7 +61,7 @@ Controls:
         ..default()
     })
     .add_plugins(DefaultPlugins)
-    // .add_plugin(WorldInspectorPlugin::new())
+    .add_plugin(WorldInspectorPlugin::new())
     .add_plugin(FbxPlugin)
     .add_startup_system(setup)
     .add_system(update_lights)
@@ -110,10 +112,12 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         },
         ..default()
     });
-    commands.spawn_bundle(SceneBundle {
-        scene: asset_server.load(&scene_path),
-        ..default()
-    });
+    commands
+        .spawn_bundle(SceneBundle {
+            scene: asset_server.load(&scene_path),
+            ..default()
+        })
+        .insert(Name::new(scene_path));
 }
 
 const SCALE_STEP: f32 = 0.1;

@@ -6,7 +6,7 @@ use bevy::{
     render::{mesh::Mesh as BevyMesh, texture::Image},
     utils::HashMap,
 };
-use fbxcel_dom::fbxcel::tree::v7400::NodeId;
+use fbxcel_dom::v7400::object::ObjectId;
 
 #[derive(Debug, Clone, TypeUuid)]
 #[uuid = "966d55c0-515b-4141-97a1-de30ac8ee44c"]
@@ -34,9 +34,9 @@ pub struct FbxScene {
     pub bevy_meshes: HashMap<Handle<BevyMesh>, String>,
     pub materials: HashMap<String, Handle<StandardMaterial>>,
     pub textures: HashMap<String, Handle<Image>>,
-    pub meshes: HashMap<NodeId, Handle<FbxMesh>>,
-    pub hierarchy: HashMap<NodeId, FbxObject>,
-    pub root: Option<NodeId>,
+    pub meshes: HashMap<ObjectId, Handle<FbxMesh>>,
+    pub hierarchy: HashMap<ObjectId, FbxObject>,
+    pub root: Option<ObjectId>,
 }
 
 /// An FBX object in the scene tree.
@@ -53,5 +53,5 @@ pub struct FbxObject {
     /// are relevant to Bevy.
     /// Meaning that you won't find the `NodeId` in `hierarchy` or `meshes`
     /// `HashMap`s of the [`FbxScene`] structure.
-    pub children: Vec<NodeId>,
+    pub children: Vec<ObjectId>,
 }

@@ -1,17 +1,27 @@
 //! Collection of temporary extensions to the fbxcell_dom types
 //! until they are merged upstream.
-use bevy::math::{Quat, Vec3};
+
+use bevy::math::{DVec2, DVec3, DVec4, Vec2, Vec3, Vec4};
+use glam::EulerRot;
+use mint::{Vector2, Vector3, Vector4};
 
 use fbxcel_dom::{
-    fbxcel::{low::v7400::AttributeValue, tree::v7400::NodeHandle},
+    fbxcel::low::v7400::AttributeValue,
     v7400::{
         object::{
-            material::MaterialHandle, property::loaders::PrimitiveLoader, texture::TextureHandle,
-            TypedObjectHandle,
+            material::MaterialHandle,
+            model::ModelHandle,
+            property::{
+                loaders::{MintLoader, PrimitiveLoader, RgbLoader},
+                LoadProperty, ObjectProperties, PropertyHandle,
+            },
+            texture::TextureHandle,
+            ObjectHandle, TypedObjectHandle,
         },
-        GlobalSettings,
+        Document, GlobalSettings,
     },
 };
+use rgb::{RGB, RGBA};
 
 pub trait MaterialHandleExt<'a> {
     fn load_texture(&self, name: &'static str) -> Option<TextureHandle>;
@@ -71,93 +81,192 @@ impl<'a> GlobalSettingsExt<'a> for GlobalSettings<'a> {
     }
 }
 
-// a bit of trivia on how transform is encoded in FBX:
-// rotation: EulerXYZ in degrees, three steps: PreRotation, Lcl Rotation, PostRotation
-// the other: probably mirrors rotation and all have a Pre, Lcl and Post version
-// https://forums.autodesk.com/t5/fbx-forum/maya-quot-rotate-axis-quot-vs-fbx-quot-postrotation-quot/td-p/4168814
-// https://help.autodesk.com/cloudhelp/2017/ENU/FBX-Developer-Help/files/GUID-C35D98CB-5148-4B46-82D1-51077D8970EE.htm
-// http://docs.autodesk.com/FBX/2014/ENU/FBX-SDK-Documentation/cpp_ref/class_fbx_node.html
-// (see "Pivot Management" section for last link)
-pub trait NodeHandleTransformExt<'a> {
-    fn get_vec3(&self, name: &str) -> Option<Vec3>;
-    fn rotation(&self) -> Quat;
-    fn scale(&self) -> Vec3;
-    fn translation(&self) -> Vec3;
+pub trait Loadable: Sized {
+    fn get_property(properties: ObjectProperties, attribute: &str) -> anyhow::Result<Self>;
+}
+macro_rules! impl_loadable {
+    ( $( $loader:expr => $target:ty ),* $(,)? ) => {
+        $(
+            impl_loadable!(@single $target, $loader );
+        )*
+    };
+    (@single $target:ty, $loader:expr) => {
+        impl Loadable for $target {
+            fn get_property(properties: ObjectProperties, attribute: &str) -> anyhow::Result<Self> {
+                let loader = $loader;
+                let property= properties.get_property(attribute).ok_or_else(||
+                    anyhow::anyhow!("no {attribute} in properties when decoding {}", stringify!($target))
+                )?;
+                Ok(loader.load(&property)?.into())
+            }
+        }
+    };
+}
+struct EnumLoader<T> {
+    enum_name: &'static str,
+    try_into: fn(i32) -> anyhow::Result<T>,
+}
+impl<T> EnumLoader<T> {
+    fn new(enum_name: &'static str) -> Self
+    where
+        T: TryFrom<i32, Error = anyhow::Error>,
+    {
+        Self {
+            enum_name,
+            try_into: T::try_from,
+        }
+    }
+}
+impl<'a, T> LoadProperty<'a> for EnumLoader<T> {
+    type Error = anyhow::Error;
+    type Value = T;
+    fn expecting(&self) -> String {
+        self.enum_name.to_string()
+    }
+    fn load(self, node: &PropertyHandle<'a>) -> Result<Self::Value, Self::Error> {
+        use anyhow::anyhow;
+        let attributes = node.value_part();
+        match attributes {
+            [attribute, ..] => match attribute {
+                AttributeValue::I32(value) => (self.try_into)(*value),
+                attribute => Err(anyhow!(
+                    "Was expecting a I32 attribute value when decoding {}, got {attribute:?}",
+                    self.enum_name,
+                )),
+            },
+            _ => Err(anyhow!(
+                "There were no elements in the FBX attributes when decoding {}",
+                self.enum_name,
+            )),
+        }
+    }
 }
 
-// Add `unwrap_or{_default}` to all elements of
-// an expression of the form foo $op bar $op baz ...
-// where `$op` is a math operator such as +, -, *
-macro_rules! op_or {
-    ( default $op:tt ($head:expr $( , $tail:expr )+) ) => {
-        $head.unwrap_or_default() $op op_or!(default $op ( $($tail),* ))
-    };
-    ( default $op:tt ($head:expr) ) => {
-        $head.unwrap_or_default()
-    };
-    ( ($default:expr) $op:tt ($head:expr $( , $tail:expr )+) ) => {
-        $head.unwrap_or($default) $op op_or!(($default) $op ( $($tail),* ))
-    };
-    ( ($default:expr) $op:tt ($head:expr) ) => {
-        $head.unwrap_or($default)
-    };
+// Part of the "FbxNode" native_typename
+/// The `InheritType` property, equivalent to `EInheritType` in the FBX SDK.
+///
+/// This controls the order in which parent to child transformation is applied.
+/// Note that "child" here is the node with the `InheritType` attribute.
+///
+/// - See also: http://docs.autodesk.com/FBX/2014/ENU/FBX-SDK-Documentation/cpp_ref/class_fbx_transform.html#a0affdd70d8df512d82fdb6a30112bf0c
+#[derive(Copy, Clone, Default, Debug)]
+pub enum InheritType {
+    /// Parent Rotation → child rotation → Parent Scale → child scale (default)
+    #[default]
+    RrSs,
+    /// Parent Rotation → Parent Scale → child rotation → child scale
+    RSrs,
+    /// Parent Rotation → child rotation → child scale
+    Rrs,
 }
+impl TryFrom<i32> for InheritType {
+    type Error = anyhow::Error;
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        use InheritType::*;
+        match value {
+            0 => Ok(RrSs),
+            1 => Ok(RSrs),
+            2 => Ok(Rrs),
+            i => Err(anyhow::anyhow!("{i} not in range of InheritType enum")),
+        }
+    }
+}
+// Part of the "FbxNode" native_typename
+/// The order of rotation of the `Rotation` attributes.
+///
+/// Rotation in FBX is defined as a Vec3 of **degrees**
+/// (not radians) of Tait-Bryan angles. (commonly and falsly called Euler angles)
+#[allow(clippy::upper_case_acronyms)]
+#[derive(Copy, Clone, Default, Debug)]
+pub enum RotationOrder {
+    #[default]
+    XYZ,
+    XZY,
+    YZX,
+    YXZ,
+    ZXY,
+    ZYX,
+    // Not sure what that means.
+    SphericXYZ,
+}
+impl From<RotationOrder> for EulerRot {
+    fn from(ord: RotationOrder) -> Self {
+        use EulerRot as Er;
+        use RotationOrder as Ro;
+        match ord {
+            Ro::XYZ => Er::XYZ,
+            Ro::XZY => Er::XZY,
+            Ro::YZX => Er::YZX,
+            Ro::YXZ => Er::YXZ,
+            Ro::ZXY => Er::ZXY,
+            Ro::ZYX => Er::ZYX,
+            Ro::SphericXYZ => Er::XYZ,
+        }
+    }
+}
+impl TryFrom<i32> for RotationOrder {
+    type Error = anyhow::Error;
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        use RotationOrder::*;
+        match value {
+            0 => Ok(XYZ),
+            1 => Ok(XZY),
+            2 => Ok(YZX), // promising but a bit offset
+            3 => Ok(YXZ),
+            4 => Ok(ZXY),
+            5 => Ok(ZYX),
+            6 => Ok(SphericXYZ),
+            i => Err(anyhow::anyhow!("{i} not in range of RotationOrder enum")),
+        }
+    }
+}
+impl_loadable!(
+    RgbLoader::<RGB<f64>>::default() => RGB<f64>,
+    RgbLoader::<RGB<f32>>::default() => RGB<f32>,
+    RgbLoader::<RGBA<f64>>::default() => RGBA<f64>,
+    RgbLoader::<RGBA<f32>>::default() => RGBA<f32>,
+    PrimitiveLoader::<bool>::default() => bool,
+    PrimitiveLoader::<f32>::default() => f32,
+    PrimitiveLoader::<f64>::default() => f64,
+    PrimitiveLoader::<i16>::default() => i16,
+    PrimitiveLoader::<i32>::default() => i32,
+    PrimitiveLoader::<i64>::default() => i64,
+    PrimitiveLoader::<u16>::default() => u16,
+    PrimitiveLoader::<u32>::default() => u32,
+    PrimitiveLoader::<u64>::default() => u64,
+    MintLoader::<Vector2<f32>>::default() => Vec2,
+    MintLoader::<Vector2<f64>>::default() => DVec2,
+    MintLoader::<Vector3<f32>>::default() => Vec3,
+    MintLoader::<Vector3<f64>>::default() => DVec3,
+    MintLoader::<Vector4<f32>>::default() => Vec4,
+    MintLoader::<Vector4<f64>>::default() => DVec4,
+    EnumLoader::<InheritType>::new("InheritType") => InheritType,
+    EnumLoader::<RotationOrder>::new("RotationOrder") => EulerRot,
+);
+
 // TODO: additional useful fields in the Model node:
 // - "Primary Visibility"
 // - "Casts Shadows"
 // - "Receive Shadows"
 // - "Culling"
 // - "Shading" (seems to always be false though?)
-// TODO: probably need to impl that on ObjectHandle
-// so that it's possible to use `properties_by_native_typename`
-// so that defaults are used when value absent.
-//
-// Also note that "Lcl" stands for "Local"
-impl<'a> NodeHandleTransformExt<'a> for NodeHandle<'a> {
-    fn get_vec3(&self, requested: &str) -> Option<Vec3> {
-        use AttributeValue::{String as Str, F64};
-        let prop = self.first_child_by_name("Properties70")?;
-        let attributes = prop.children().find_map(|c| {
-            let attributes = c.attributes();
-            let is_requested = attributes.first() == Some(&Str(requested.to_owned()));
-            is_requested.then(|| attributes)
-        })?;
-        match attributes {
-            &[.., F64(x), F64(y), F64(z)] => Some(Vec3::new(x as f32, y as f32, z as f32)),
-            _ => None,
-        }
-    }
-    // The formula is: Lcl * Pre * Post^-1
-    fn rotation(&self) -> Quat {
-        use bevy::math::EulerRot::XYZ;
-        let to_quat = |Vec3 { x, y, z }| {
-            Quat::from_euler(XYZ, x.to_radians(), y.to_radians(), z.to_radians())
-        };
+fn is_object_root(object: &ObjectHandle) -> bool {
+    object
+        .destination_objects()
+        .any(|obj| obj.label().is_none() && obj.object_id().raw() == 0)
+}
 
-        let pre = self.get_vec3("PreRotation").map(to_quat);
-        let value = self.get_vec3("Lcl Rotation").map(to_quat);
-        let post = self
-            .get_vec3("PostRotation")
-            .map(to_quat)
-            .map(Quat::inverse);
-
-        op_or!(default * (value, pre, post))
-    }
-    // The formula is: Lcl * Pre * Post^-1
-    fn scale(&self) -> Vec3 {
-        let pre = self.get_vec3("PreScaling");
-        let value = self.get_vec3("Lcl Scaling");
-        let post = self.get_vec3("PostScaling").map(|v| 1.0 / v);
-
-        op_or!((Vec3::ONE) * (value, pre, post))
-    }
-    // The formula is: Lcl + Pre + Post
-    // (actually not sure "Pre" and "Post" fields exist for translation)
-    fn translation(&self) -> Vec3 {
-        let pre = self.get_vec3("PreTranslation");
-        let value = self.get_vec3("Lcl Translation");
-        let post = self.get_vec3("PostTranslation");
-
-        op_or!(default + (value, pre, post))
+pub trait ModelTreeRootExt {
+    fn model_root(&self) -> ModelHandle<'_>;
+}
+impl ModelTreeRootExt for Document {
+    fn model_root(&self) -> ModelHandle<'_> {
+        self.objects()
+            .find(is_object_root)
+            .and_then(|obj| match obj.get_typed() {
+                TypedObjectHandle::Model(o) => Some(*o),
+                _ => None,
+            })
+            .unwrap()
     }
 }
