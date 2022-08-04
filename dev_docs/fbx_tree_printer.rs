@@ -6,12 +6,12 @@ fn print_children(depth: usize, children: Children) {
             print!("{name} ", name = child.name(),);
         }
         let attr_display = |att: &AttributeValue| match att {
-            AttributeValue::Bool(v) => format!("{v}"),
-            AttributeValue::I16(v) => format!("{v}"),
-            AttributeValue::I32(v) => format!("{v}"),
-            AttributeValue::I64(v) => format!("{v}"),
-            AttributeValue::F32(v) => format!("{v}"),
-            AttributeValue::F64(v) => format!("{v}"),
+            AttributeValue::Bool(v) => v.to_string(),
+            AttributeValue::I16(v) => v.to_string(),
+            AttributeValue::I32(v) => v.to_string(),
+            AttributeValue::I64(v) => v.to_string(),
+            AttributeValue::F32(v) => v.to_string(),
+            AttributeValue::F64(v) => v.to_string(),
             AttributeValue::ArrBool(_) => "[bool]".to_owned(),
             AttributeValue::ArrI32(_) => "[i32]".to_owned(),
             AttributeValue::ArrI64(_) => "[i64]".to_owned(),
