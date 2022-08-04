@@ -1,19 +1,15 @@
 //! Triangulator.
 
-// TODO: Replace with https://lib.rs/triangulate?
+// TODO: https://github.com/HeavyRain266/bevy_fbx/issues/11
 
 use anyhow::{anyhow, bail};
 use bevy::math::{DVec2, DVec3};
 use fbxcel_dom::v7400::data::mesh::{PolygonVertexIndex, PolygonVertices};
 
-/// Axis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Axis {
-    /// X.
     X,
-    /// Y.
     Y,
-    /// Z.
     Z,
 }
 

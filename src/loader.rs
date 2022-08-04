@@ -53,11 +53,6 @@ const FBX_TO_BEVY_SCALE_FACTOR: f32 = 0.01;
 
 pub struct Loader<'b, 'w> {
     scene: FbxScene,
-    // TODO: it seems the bistro scene is supposed to be 0.016 it's current size
-    // maybe we are doing something wrong here?
-    // TODO: test with Xo's model to check how it works, maybe
-    // the scale is a relation between OriginalUnitScale and UnitScale, rather
-    // than just UnitScale
     load_context: &'b mut LoadContext<'w>,
     suported_compressed_formats: CompressedImageFormats,
     material_loaders: Vec<MaterialLoader>,
@@ -129,7 +124,7 @@ fn spawn_scene(
         .insert_bundle(TransformBundle::from_transform(Transform::from_scale(
             Vec3::ONE * FBX_TO_BEVY_SCALE_FACTOR * fbx_file_scale,
         )))
-        .insert(Name::new("Fbx scene Root"))
+        .insert(Name::new("Fbx scene root"))
         .with_children(|commands| {
             for root in roots {
                 spawn_scene_rec(*root, commands, hierarchy, models);

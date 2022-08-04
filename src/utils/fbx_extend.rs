@@ -84,24 +84,6 @@ impl<'a> GlobalSettingsExt<'a> for GlobalSettings<'a> {
 pub trait Loadable: Sized {
     fn get_property(properties: ObjectProperties, attribute: &str) -> anyhow::Result<Self>;
 }
-macro_rules! impl_loadable {
-    ( $( $loader:expr => $target:ty ),* $(,)? ) => {
-        $(
-            impl_loadable!(@single $target, $loader );
-        )*
-    };
-    (@single $target:ty, $loader:expr) => {
-        impl Loadable for $target {
-            fn get_property(properties: ObjectProperties, attribute: &str) -> anyhow::Result<Self> {
-                let loader = $loader;
-                let property= properties.get_property(attribute).ok_or_else(||
-                    anyhow::anyhow!("no {attribute} in properties when decoding {}", stringify!($target))
-                )?;
-                Ok(loader.load(&property)?.into())
-            }
-        }
-    };
-}
 struct EnumLoader<T> {
     enum_name: &'static str,
     try_into: fn(i32) -> anyhow::Result<T>,
@@ -175,7 +157,10 @@ impl TryFrom<i32> for InheritType {
 /// The order of rotation of the `Rotation` attributes.
 ///
 /// Rotation in FBX is defined as a Vec3 of **degrees**
-/// (not radians) of Tait-Bryan angles. (commonly and falsly called Euler angles)
+/// (not radians) of Tait-Bryan angles (commonly called Euler angles).
+///
+/// Note that for reasons unbeknownst, the proper translation into quaternions,
+/// the euler angles must be negated and the resulting matrix inverted.
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Copy, Clone, Default, Debug)]
 pub enum RotationOrder {
@@ -211,7 +196,7 @@ impl TryFrom<i32> for RotationOrder {
         match value {
             0 => Ok(XYZ),
             1 => Ok(XZY),
-            2 => Ok(YZX), // promising but a bit offset
+            2 => Ok(YZX),
             3 => Ok(YXZ),
             4 => Ok(ZXY),
             5 => Ok(ZYX),
@@ -219,6 +204,25 @@ impl TryFrom<i32> for RotationOrder {
             i => Err(anyhow::anyhow!("{i} not in range of RotationOrder enum")),
         }
     }
+}
+
+macro_rules! impl_loadable {
+    ( $( $loader:expr => $target:ty ),* $(,)? ) => {
+        $(
+            impl_loadable!(@single $target, $loader );
+        )*
+    };
+    (@single $target:ty, $loader:expr) => {
+        impl Loadable for $target {
+            fn get_property(properties: ObjectProperties, attribute: &str) -> anyhow::Result<Self> {
+                let loader = $loader;
+                let property= properties.get_property(attribute).ok_or_else(||
+                    anyhow::anyhow!("no {attribute} in properties when decoding {}", stringify!($target))
+                )?;
+                Ok(loader.load(&property)?.into())
+            }
+        }
+    };
 }
 impl_loadable!(
     RgbLoader::<RGB<f64>>::default() => RGB<f64>,
@@ -249,7 +253,6 @@ impl_loadable!(
 // - "Casts Shadows"
 // - "Receive Shadows"
 // - "Culling"
-// - "Shading" (seems to always be false though?)
 fn is_object_root(object: &ObjectHandle) -> bool {
     object
         .destination_objects()
