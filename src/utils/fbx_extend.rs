@@ -1,8 +1,7 @@
 //! Collection of temporary extensions to the fbxcell_dom types
 //! until they are merged upstream.
 
-use bevy::math::{DVec2, DVec3, DVec4, Vec2, Vec3, Vec4};
-use glam::EulerRot;
+use bevy::math::{DVec2, DVec3, DVec4, EulerRot, Vec2, Vec3, Vec4};
 use mint::{Vector2, Vector3, Vector4};
 
 use fbxcel_dom::{
@@ -159,7 +158,7 @@ impl TryFrom<i32> for InheritType {
 /// Rotation in FBX is defined as a Vec3 of **degrees**
 /// (not radians) of Tait-Bryan angles (commonly called Euler angles).
 ///
-/// Note that for reasons unbeknownst, the proper translation into quaternions,
+/// Note that for reasons unbeknownst, to translate this into the bevy equivalent,
 /// the euler angles must be negated and the resulting matrix inverted.
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Copy, Clone, Default, Debug)]

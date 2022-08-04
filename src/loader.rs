@@ -2,23 +2,19 @@ use std::path::Path;
 
 use anyhow::{anyhow, bail, Context};
 use bevy::{
-    asset::{AssetLoader, BoxedFuture, Handle, LoadContext, LoadedAsset},
-    core::Name,
-    ecs::world::{FromWorld, World},
-    hierarchy::{BuildWorldChildren, WorldChildBuilder},
-    log::{debug, error, info, trace},
+    asset::{AssetLoader, BoxedFuture, LoadContext, LoadedAsset},
     math::{DVec2, DVec3, Vec2},
-    pbr::{PbrBundle, StandardMaterial},
-    prelude::Transform,
+    prelude::{
+        debug, error, info, trace, BuildWorldChildren, FromWorld, Handle, Image, Mesh, Name,
+        PbrBundle, Scene, StandardMaterial, Transform, TransformBundle, VisibilityBundle, World,
+        WorldChildBuilder,
+    },
     render::{
-        mesh::{Indices, Mesh as BevyMesh, PrimitiveTopology, VertexAttributeValues},
+        mesh::{Indices, PrimitiveTopology, VertexAttributeValues},
         render_resource::{AddressMode, SamplerDescriptor},
         renderer::RenderDevice,
-        texture::{CompressedImageFormats, Image, ImageSampler, ImageType},
-        view::VisibilityBundle,
+        texture::{CompressedImageFormats, ImageSampler, ImageType},
     },
-    scene::Scene,
-    transform::TransformBundle,
     utils::HashMap,
 };
 use fbxcel_dom::{
@@ -223,7 +219,7 @@ impl<'b, 'w> Loader<'b, 'w> {
         &mut self,
         mesh_obj: object::geometry::MeshHandle,
         num_materials: usize,
-    ) -> anyhow::Result<Vec<Handle<BevyMesh>>> {
+    ) -> anyhow::Result<Vec<Handle<Mesh>>> {
         let label = match mesh_obj.name() {
             Some(name) if !name.is_empty() => format!("FbxMesh@{name}/Primitive"),
             _ => format!("FbxMesh{}/Primitive", mesh_obj.object_id().raw()),
@@ -250,7 +246,7 @@ impl<'b, 'w> Loader<'b, 'w> {
         drop(triangulate_mesh);
 
         // TODO this seems to duplicate vertices from neighboring triangles. We shouldn't
-        // do that and instead set the indice attribute of the BevyMesh properly.
+        // do that and instead set the indice attribute of the Mesh properly.
         let get_position = |pos: Option<_>| -> Result<_, anyhow::Error> {
             let cpi = pos.ok_or_else(|| anyhow!("Failed to get control point index"))?;
             let point = polygon_vertices
@@ -372,17 +368,14 @@ impl<'b, 'w> Loader<'b, 'w> {
 
         debug!("Material count for {label}: {}", all_indices.len());
 
-        let mut mesh = BevyMesh::new(PrimitiveTopology::TriangleList);
+        let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
         mesh.insert_attribute(
-            BevyMesh::ATTRIBUTE_POSITION,
+            Mesh::ATTRIBUTE_POSITION,
             VertexAttributeValues::Float32x3(positions),
         );
+        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, VertexAttributeValues::Float32x2(uv));
         mesh.insert_attribute(
-            BevyMesh::ATTRIBUTE_UV_0,
-            VertexAttributeValues::Float32x2(uv),
-        );
-        mesh.insert_attribute(
-            BevyMesh::ATTRIBUTE_NORMAL,
+            Mesh::ATTRIBUTE_NORMAL,
             VertexAttributeValues::Float32x3(normals),
         );
         mesh.set_indices(Some(Indices::U32(full_mesh_indices)));

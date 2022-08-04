@@ -46,9 +46,9 @@ pub struct FbxObject {
     /// The children of this node.
     ///
     /// # Notes
-    /// Not all [`NodeId`] declared as child of an `FbxObject`
+    /// Not all [`ObjectId`] declared as child of an `FbxObject`
     /// are relevant to Bevy.
-    /// Meaning that you won't find the `NodeId` in `hierarchy` or `meshes`
+    /// Meaning that you won't find the `ObjectId` in `hierarchy` or `meshes`
     /// `HashMap`s of the [`FbxScene`] structure.
     pub children: Vec<ObjectId>,
 }
