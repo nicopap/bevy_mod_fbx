@@ -29,7 +29,7 @@ use fbxcel_dom::{
             self,
             model::{ModelHandle, TypedModelHandle},
             texture::TextureHandle,
-            ObjectHandle, ObjectId, TypedObjectHandle,
+            ObjectId, TypedObjectHandle,
         },
         Document,
     },
@@ -47,8 +47,9 @@ use crate::{
     MaterialLoader,
 };
 
-/// How much to scale down FBX stuff.
-const FALLBACK_FBX_SCALE: f64 = 100.0;
+/// Bevy is kinda "meters" based while FBX (or rather: stuff exported by maya) is in "centimeters"
+/// Although it doesn't mean much in practice.
+const FBX_TO_BEVY_SCALE_FACTOR: f32 = 0.01;
 
 pub struct Loader<'b, 'w> {
     scene: FbxScene,
@@ -57,7 +58,6 @@ pub struct Loader<'b, 'w> {
     // TODO: test with Xo's model to check how it works, maybe
     // the scale is a relation between OriginalUnitScale and UnitScale, rather
     // than just UnitScale
-    fbx_scale: f64,
     load_context: &'b mut LoadContext<'w>,
     suported_compressed_formats: CompressedImageFormats,
     material_loaders: Vec<MaterialLoader>,
@@ -114,7 +114,8 @@ impl AssetLoader for FbxLoader {
 }
 
 fn spawn_scene(
-    root: ObjectId,
+    fbx_file_scale: f32,
+    roots: &[ObjectId],
     hierarchy: &HashMap<ObjectId, FbxObject>,
     models: &HashMap<ObjectId, FbxMesh>,
 ) -> Scene {
@@ -125,13 +126,14 @@ fn spawn_scene(
     scene_world
         .spawn()
         .insert_bundle(VisibilityBundle::default())
-        .insert_bundle(TransformBundle {
-            local: Transform::from_scale(Vec3::ONE * 100.0),
-            ..Default::default()
-        })
+        .insert_bundle(TransformBundle::from_transform(Transform::from_scale(
+            Vec3::ONE * FBX_TO_BEVY_SCALE_FACTOR * fbx_file_scale,
+        )))
         .insert(Name::new("Fbx scene Root"))
         .with_children(|commands| {
-            spawn_scene_rec(root, commands, hierarchy, models);
+            for root in roots {
+                spawn_scene_rec(*root, commands, hierarchy, models);
+            }
         });
     Scene::new(scene_world)
 }
@@ -177,7 +179,6 @@ impl<'b, 'w> Loader<'b, 'w> {
     ) -> Self {
         Self {
             scene: FbxScene::default(),
-            fbx_scale: FALLBACK_FBX_SCALE,
             load_context,
             material_loaders: loaders,
             suported_compressed_formats: formats,
@@ -190,27 +191,32 @@ impl<'b, 'w> Loader<'b, 'w> {
             self.load_context.path().to_string_lossy(),
         );
         let mut meshes = HashMap::new();
-        if let Some(fbx_scale) = doc.global_settings().and_then(|g| g.fbx_scale()) {
-            self.fbx_scale = fbx_scale;
+        let mut hierarchy = HashMap::new();
+
+        let fbx_scale = doc
+            .global_settings()
+            .and_then(|g| g.fbx_scale())
+            .unwrap_or(1.0);
+        let roots = doc.model_roots();
+        for root in &roots {
+            traverse_hierarchy(*root, &mut hierarchy);
         }
-        let mut hierarchy = HashMap::default();
-        let root = doc.model_root();
-        let transform_root = root.object_id();
-        traverse_hierarchy(root, &mut hierarchy);
 
         for obj in doc.objects() {
             if let TypedObjectHandle::Model(TypedModelHandle::Mesh(mesh)) = obj.get_typed() {
                 meshes.insert(obj.object_id(), self.load_mesh(mesh).await?);
             }
         }
+        let roots: Vec<_> = roots.into_iter().map(|obj| obj.object_id()).collect();
+        let scene = spawn_scene(fbx_scale as f32, &roots, &hierarchy, &meshes);
+
+        let load_context = &mut self.load_context;
+        load_context.set_labeled_asset("Scene", LoadedAsset::new(scene));
+
         let mut scene = self.scene;
         scene.hierarchy = hierarchy.clone();
-        scene.root = Some(ObjectHandle::object_id(&root));
-        let load_context = self.load_context;
+        scene.roots = roots;
         load_context.set_labeled_asset("FbxScene", LoadedAsset::new(scene));
-
-        let scene = spawn_scene(transform_root, &hierarchy, &meshes);
-        load_context.set_labeled_asset("Scene", LoadedAsset::new(scene));
         info!(
             "Successfully loaded scene {}#FbxScene",
             load_context.path().to_string_lossy(),
@@ -255,7 +261,7 @@ impl<'b, 'w> Loader<'b, 'w> {
             let point = polygon_vertices
                 .control_point(cpi)
                 .ok_or_else(|| anyhow!("Failed to get control point: cpi={:?}", cpi))?;
-            Ok((DVec3::from(point) / self.fbx_scale).as_vec3().into())
+            Ok(DVec3::from(point).as_vec3().into())
         };
         let positions = triangle_pvi_indices
             .iter_control_point_indices()
@@ -663,7 +669,7 @@ fn traverse_hierarchy_rec(
 
     let fbx_object = FbxObject {
         name,
-        transform: data.to_local_transform(parent.as_ref().map(|p| p.global)),
+        transform: data.as_local_transform(parent.as_ref().map(|p| p.global)),
         children: node.child_models().map(|c| c.object_id()).collect(),
     };
     hierarchy.insert(node.object_id(), fbx_object);

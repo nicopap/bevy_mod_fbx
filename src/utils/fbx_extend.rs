@@ -257,16 +257,16 @@ fn is_object_root(object: &ObjectHandle) -> bool {
 }
 
 pub trait ModelTreeRootExt {
-    fn model_root(&self) -> ModelHandle<'_>;
+    fn model_roots(&self) -> Vec<ModelHandle<'_>>;
 }
 impl ModelTreeRootExt for Document {
-    fn model_root(&self) -> ModelHandle<'_> {
+    fn model_roots(&self) -> Vec<ModelHandle<'_>> {
         self.objects()
-            .find(is_object_root)
-            .and_then(|obj| match obj.get_typed() {
+            .filter(is_object_root)
+            .filter_map(|obj| match obj.get_typed() {
                 TypedObjectHandle::Model(o) => Some(*o),
                 _ => None,
             })
-            .unwrap()
+            .collect()
     }
 }

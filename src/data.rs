@@ -1,9 +1,6 @@
 use bevy::{
-    asset::Handle,
-    pbr::StandardMaterial,
-    prelude::Transform,
+    prelude::{Handle, Image, Mesh, StandardMaterial, Transform},
     reflect::TypeUuid,
-    render::{mesh::Mesh as BevyMesh, texture::Image},
     utils::HashMap,
 };
 use fbxcel_dom::v7400::object::ObjectId;
@@ -12,7 +9,7 @@ use fbxcel_dom::v7400::object::ObjectId;
 #[uuid = "966d55c0-515b-4141-97a1-de30ac8ee44c"]
 pub struct FbxMesh {
     pub name: Option<String>,
-    pub bevy_mesh_handles: Vec<Handle<BevyMesh>>,
+    pub bevy_mesh_handles: Vec<Handle<Mesh>>,
     pub materials: Vec<Handle<StandardMaterial>>,
 }
 
@@ -31,12 +28,12 @@ pub struct FbxMesh {
 #[uuid = "e87d49b6-8d6a-43c7-bb33-5315db8516eb"]
 pub struct FbxScene {
     pub name: Option<String>,
-    pub bevy_meshes: HashMap<Handle<BevyMesh>, String>,
+    pub bevy_meshes: HashMap<Handle<Mesh>, String>,
     pub materials: HashMap<String, Handle<StandardMaterial>>,
     pub textures: HashMap<String, Handle<Image>>,
     pub meshes: HashMap<ObjectId, Handle<FbxMesh>>,
     pub hierarchy: HashMap<ObjectId, FbxObject>,
-    pub root: Option<ObjectId>,
+    pub roots: Vec<ObjectId>,
 }
 
 /// An FBX object in the scene tree.

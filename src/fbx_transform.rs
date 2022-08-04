@@ -129,13 +129,14 @@ pub(crate) struct LocalScale(Scale);
 // This is similar to mat.to_scale_rotation_translation()
 // but takes into account shear operations (meaning: rotation followed by non-uniform scale)
 // The implementation is the one used in the Autodesk scene translation example file.
-fn get_reverse_transform(mat: Mat4) -> (Mat4, Mat4) {
+fn get_reverse_transform(mat: Mat4) -> (Mat4, Mat4, Mat4) {
     let mat_q = Mat4::from_quat;
     let mat_t = Mat4::from_translation;
     let (_, rotation, translation) = mat.to_scale_rotation_translation();
     let rotation = mat_q(rotation);
-    let shear_scale = mat * rotation.inverse() * mat_t(translation).inverse();
-    (shear_scale, rotation)
+    let translation = mat_t(translation);
+    let shear_scale = mat * rotation.inverse() * translation.inverse();
+    (shear_scale, rotation, translation)
 }
 
 // NOTE: there were no thought about performance put into this,
@@ -153,7 +154,8 @@ fn global_transform(node: FbxNodeTransformInfo, parent: Option<FbxTransform>) ->
         local_scale: local_parent_scale,
     } = parent.unwrap_or_default();
 
-    let (parent_shear_scale, parent_rotation) = get_reverse_transform(parent_transform);
+    let (parent_shear_scale, parent_rotation, parent_translation) =
+        get_reverse_transform(parent_transform);
     let parent_nonlocal_scale = parent_shear_scale * local_parent_scale.mat().inverse();
 
     let inherited_rot_scale = match node.inherit_type {
@@ -168,8 +170,12 @@ fn global_transform(node: FbxNodeTransformInfo, parent: Option<FbxTransform>) ->
         * with_off_piv(rot.offset, rot.pivot, rotation)
         * with_off_piv(scale.offset, scale.pivot, scale.local.mat());
     let translation = translation.to_scale_rotation_translation().2;
-    let global_translation = parent_transform.transform_vector3(translation);
-    mat_t(global_translation * 0.625) * inherited_rot_scale
+    // NOTE: this is unlike the Autodesk resource provided on top, it seems
+    // we need to remove the scale component from the parent's global matrix
+    // we multiply the translation with. Absolutely no idea why, but it works.
+    let parent_non_scale_transform = parent_translation * parent_rotation;
+    let global_translation = parent_non_scale_transform.transform_vector3(translation);
+    mat_t(global_translation) * inherited_rot_scale
 }
 
 /// Fbx global transform, including parent local scale to compute
@@ -208,7 +214,7 @@ impl FbxTransform {
     //    - from bevy's transform mat: child(GlobalTransform) = parent(GlobalTransform) * child(Transform)
     //    - We have: child(GlobalTransform) and parent(GlobalTransform)
     //    - child(Transform) = child(GlobalTransform) * parent(GlobalTransform)¯¹
-    pub(crate) fn to_local_transform(&self, parent: Option<Mat4>) -> Transform {
+    pub(crate) fn as_local_transform(&self, parent: Option<Mat4>) -> Transform {
         let mat = if let Some(parent) = parent {
             self.global * parent.inverse()
         } else {
