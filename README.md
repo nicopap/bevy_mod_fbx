@@ -76,9 +76,8 @@ if you encounter any issue please do the following:
 
 - Try opening the model using the `scene_viewer` (run `cargo run --example scene_viewer --release -- /path/to/file.fbx`)
   (if your file has textures, make sure to enable the correct file formats using `--features bevy/png bevy/jpg bevy/tga` etc.)
-- If it fails, open an issue on our Github repo with a screenshot in the scene viewer
+- If it fails, open an [issue] on our Github repo with a screenshot in the scene viewer
   and a screenshot of how the model should look like
-  <https://github.com/HeavyRain266/bevy_fbx/issues/new/choose>
 - Ideally provide a download link to your FBX model
 
 #### Further troubleshooting tools
@@ -88,13 +87,34 @@ the following tools may be useful:
 
 - <https://github.com/lo48576/fbx_objects_depviz>
 - <https://github.com/lo48576/fbx-tree-view>
-- Use the `profile` feature with those instructions: https://github.com/bevyengine/bevy/blob/main/docs/profiling.md
+- Use the `profile` feature with the [bevy profiling instructions]
+
+#### Licensing
+
+Unless you explicitly state otherwise,
+any contribution intentionally submitted for inclusion in the work by you,
+as defined in the Apache-2.0 license, shall be dual licensed
+as in the [License](#license) section,
+without any additional terms or conditions.
 
 ## License
 
-bevy_fbx is licensed under either:
+Original loader and triangulation code (`loader.rs` and `triangulate.rs`)
+from [fbx viewer] by YOSHIOKA Takuma.
+Original scene viewer code (`scene_viewer.rs`)
+from [bevy scene viewer] by bevy contributors.
+All additions and modifications authored by `bevy_fbx` contributors (see git log).
+
+Code copyrights go to their respective authors.
+
+All code in `bevy_fbx` is licensed under either:
 
 - Apache License 2.0
 - MIT License
 
 at your option.
+
+[fbx viewer]: https://github.com/lo48576/fbx-viewer/
+[issue]: https://github.com/HeavyRain266/bevy_fbx/issues/new/choose
+[bevy profiling instructions]: https://github.com/bevyengine/bevy/blob/main/docs/profiling.md
+[bevy scene viewer]: https://github.com/bevyengine/bevy/blob/115211161b783a2f5c39346caeb8ee6b3b202bef/examples/tools/scene_viewer.rs
