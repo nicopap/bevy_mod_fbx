@@ -1,8 +1,8 @@
 [package]
-name = "bevy_fbx"
+name = "bevy_mod_fbx"
 version = "0.1.0-dev"
 edition = "2021"
-repository = "https://github.com/HeavyRain266/bevy_fbx"
+repository = "https://github.com/HeavyRain266/bevy_mod_fbx"
 exclude = ["assets/**/*", "scripts/**/*", ".github/**/*"]
 description = "Autodesk Filmbox (*.fbx) loader for Bevy Engine"
 license = "MIT OR Apache-2.0"

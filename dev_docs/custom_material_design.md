@@ -49,7 +49,7 @@ But we are working with today's bevy, so we have to go with a bespoke solution.
 
 ### Design
 
-See https://github.com/HeavyRain266/bevy_fbx/issues/18
+See https://github.com/HeavyRain266/bevy_mod_fbx/issues/18
 
 Maybe we should _delegate_ fbx material loading to a different `AssetLoader`?
 How would that work? I'd like to be able to give it a `MaterialHandle`,

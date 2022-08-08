@@ -1,6 +1,6 @@
 //! Triangulator.
 
-// TODO: https://github.com/HeavyRain266/bevy_fbx/issues/11
+// TODO: https://github.com/HeavyRain266/bevy_mod_fbx/issues/11
 
 use anyhow::{anyhow, bail};
 use bevy::math::{DVec2, DVec3};

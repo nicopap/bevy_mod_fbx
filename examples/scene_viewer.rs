@@ -16,7 +16,7 @@ use bevy::{
     render::primitives::{Aabb, Sphere},
     window::close_on_esc,
 };
-use bevy_fbx::FbxPlugin;
+use bevy_mod_fbx::FbxPlugin;
 use bevy_inspector_egui::WorldInspectorPlugin;
 
 use std::f32::consts::TAU;
@@ -50,7 +50,7 @@ Controls:
     })
     .insert_resource(LogSettings {
         level: Level::WARN,
-        filter: "bevy_fbx=info".to_owned(),
+        filter: "bevy_mod_fbx=info".to_owned(),
     })
     .insert_resource(AssetServerSettings {
         asset_folder: std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string()),

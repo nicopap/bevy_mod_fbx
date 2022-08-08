@@ -11,7 +11,7 @@ use rgb::RGB;
 
 /// Load materials from an FBX file.
 ///
-/// Define your own to extend `bevy_fbx`'s material loading capabilities.
+/// Define your own to extend `bevy_mod_fbx`'s material loading capabilities.
 #[derive(Clone, Copy)]
 pub struct MaterialLoader {
     /// The FBX texture field name used by the material you are loading.

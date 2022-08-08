@@ -4,7 +4,7 @@ use bevy::{
     render::camera::ScalingMode,
     window::close_on_esc,
 };
-use bevy_fbx::FbxPlugin;
+use bevy_mod_fbx::FbxPlugin;
 use bevy_inspector_egui::WorldInspectorPlugin;
 
 fn main() {
@@ -19,7 +19,7 @@ fn main() {
     })
     .insert_resource(LogSettings {
         level: Level::INFO,
-        filter: "bevy_fbx=trace,wgpu=warn".to_owned(),
+        filter: "bevy_mod_fbx=trace,wgpu=warn".to_owned(),
     })
     .add_plugins(DefaultPlugins)
     .add_plugin(WorldInspectorPlugin::new())

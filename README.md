@@ -1,4 +1,4 @@
-# bevy_fbx
+# bevy_mod_fbx
 
 Autodesk Filmbox (*.fbx) loader for Bevy Engine.
 
@@ -43,13 +43,13 @@ be exactly 8 bits (such as PNG).
 - [X] Load textures
 - [X] Support arbitrary material loading.
 - [X] Support Maya's PBR
-- [X] Proper scaling based on FBX config scale ([#10](https://github.com/HeavyRain266/bevy_fbx/issues/10))
+- [X] Proper scaling based on FBX config scale ([#10](https://github.com/HeavyRain266/bevy_mod_fbx/issues/10))
 - [X] Load complex scenes with a transform tree hierarchy
 - [ ] Proper handling of Coordinate system
-- [ ] Support `bevy_animation` as optional feature ([#13](https://github.com/HeavyRain266/bevy_fbx/issues/13))
-- [ ] Provide examples with usage of complex scenes ([#6](https://github.com/HeavyRain266/bevy_fbx/issues/6))
-- [ ] Convert lambert into PBR and load materials ([#12](https://github.com/HeavyRain266/bevy_fbx/issues/12))
-- [ ] Expand/rewrite triangulator ([#11](https://github.com/HeavyRain266/bevy_fbx/issues/11))
+- [ ] Support `bevy_animation` as optional feature ([#13](https://github.com/HeavyRain266/bevy_mod_fbx/issues/13))
+- [ ] Provide examples with usage of complex scenes ([#6](https://github.com/HeavyRain266/bevy_mod_fbx/issues/6))
+- [ ] Convert lambert into PBR and load materials ([#12](https://github.com/HeavyRain266/bevy_mod_fbx/issues/12))
+- [ ] Expand/rewrite triangulator ([#11](https://github.com/HeavyRain266/bevy_mod_fbx/issues/11))
 
 ### Examples
 
@@ -70,7 +70,7 @@ cargu run --example <example_name> --release --features bevy/dynamic
 
 FBX is a very widely used and flexible file format.
 We currently expect most models **to not load properly**.
-We cannot test how `bevy_fbx` handles the export formats of every software out there.
+We cannot test how `bevy_mod_fbx` handles the export formats of every software out there.
 If your model loads properly, thank your lucky start,
 if you encounter any issue please do the following:
 
@@ -103,11 +103,11 @@ Original loader and triangulation code (`loader.rs` and `triangulate.rs`)
 from [fbx viewer] by YOSHIOKA Takuma.
 Original scene viewer code (`scene_viewer.rs`)
 from [bevy scene viewer] by bevy contributors.
-All additions and modifications authored by `bevy_fbx` contributors (see git log).
+All additions and modifications authored by `bevy_mod_fbx` contributors (see git log).
 
 Code copyrights go to their respective authors.
 
-All code in `bevy_fbx` is licensed under either:
+All code in `bevy_mod_fbx` is licensed under either:
 
 - Apache License 2.0
 - MIT License
@@ -115,6 +115,6 @@ All code in `bevy_fbx` is licensed under either:
 at your option.
 
 [fbx viewer]: https://github.com/lo48576/fbx-viewer/
-[issue]: https://github.com/HeavyRain266/bevy_fbx/issues/new/choose
+[issue]: https://github.com/HeavyRain266/bevy_mod_fbx/issues/new/choose
 [bevy profiling instructions]: https://github.com/bevyengine/bevy/blob/main/docs/profiling.md
 [bevy scene viewer]: https://github.com/bevyengine/bevy/blob/115211161b783a2f5c39346caeb8ee6b3b202bef/examples/tools/scene_viewer.rs
