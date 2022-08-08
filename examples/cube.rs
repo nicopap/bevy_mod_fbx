@@ -4,8 +4,8 @@ use bevy::{
     render::camera::ScalingMode,
     window::close_on_esc,
 };
-use bevy_mod_fbx::FbxPlugin;
 use bevy_inspector_egui::WorldInspectorPlugin;
+use bevy_mod_fbx::FbxPlugin;
 
 fn main() {
     let mut app = App::new();

@@ -16,8 +16,8 @@ use bevy::{
     render::primitives::{Aabb, Sphere},
     window::close_on_esc,
 };
-use bevy_mod_fbx::FbxPlugin;
 use bevy_inspector_egui::WorldInspectorPlugin;
+use bevy_mod_fbx::FbxPlugin;
 
 use std::f32::consts::TAU;
 
