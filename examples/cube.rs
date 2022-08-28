@@ -7,11 +7,14 @@ use bevy::{
 use bevy_inspector_egui::WorldInspectorPlugin;
 use bevy_mod_fbx::FbxPlugin;
 
+#[derive(Component)]
+pub struct Spin;
+
 fn main() {
     let mut app = App::new();
 
     app.insert_resource(WindowDescriptor {
-        title: "simple cube".into(),
+        title: "Spinning Cube".into(),
         width: 756.0,
         height: 574.0,
 
@@ -25,9 +28,18 @@ fn main() {
     .add_plugin(WorldInspectorPlugin::new())
     .add_plugin(FbxPlugin)
     .add_startup_system(setup)
+    .add_system(spin_cube)
     .add_system(close_on_esc);
 
     app.run();
+}
+
+fn spin_cube(time: Res<Time>, mut query: Query<&mut Transform, With<Spin>>) {
+    for mut transform in query.iter_mut() {
+        transform.rotate_local_y(0.3 * time.delta_seconds());
+        transform.rotate_local_x(0.3 * time.delta_seconds());
+        transform.rotate_local_z(0.3 * time.delta_seconds());
+    }
 }
 
 fn setup(mut cmd: Commands, asset_server: Res<AssetServer>) {
@@ -55,5 +67,6 @@ fn setup(mut cmd: Commands, asset_server: Res<AssetServer>) {
     cmd.spawn_bundle(SceneBundle {
         scene: cube,
         ..default()
-    });
+    })
+    .insert(Spin);
 }
