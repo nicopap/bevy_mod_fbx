@@ -1,8 +1,9 @@
 # bevy_mod_fbx
 
-(Unmaintained) Autodesk Filmbox (*.fbx) loader for Bevy Engine.
+Autodesk Filmbox (*.fbx) loader for Bevy Engine.
 
-> **Note**: This plugin is no longer maintained by creator of this repository and co-author (HeavyRain266)
+**Special Credit**: Thanks to the original author HeavyRain266 for starting the project.
+`bevy_mod_fbx` is now maintained by someone else.
 
 ### Features
 
