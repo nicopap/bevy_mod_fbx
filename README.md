@@ -71,7 +71,7 @@ cargu run --example <example_name> --release --features bevy/dynamic
 
 | bevy | bevy_mod_fbx |
 |------|--------------|
-| 0.9  | 0.2          |
+| 0.9  | 0.3          |
 | 0.8  | 0.1.0-dev    |
 
 ## Contributing
