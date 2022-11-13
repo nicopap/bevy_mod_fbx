@@ -1,41 +1,40 @@
 [package]
 name = "bevy_mod_fbx"
-version = "0.1.0-dev"
-edition = "2021"
-repository = "https://github.com/HeavyRain266/bevy_mod_fbx"
-exclude = ["assets/**/*", "scripts/**/*", ".github/**/*"]
+authors = ["Nicola Papale", "HeavyRain266"]
 description = "Autodesk Filmbox (*.fbx) loader for Bevy Engine"
 license = "MIT OR Apache-2.0"
+readme = "README.md"
 keywords = ["bevy", "bevy_plugin", "fbx_loader"]
+categories = ["game-development"]
+repository = "https://github.com/nicopap/bevy_mod_fbx"
+exclude = ["assets/**/*", "scripts/**/*", ".github/**/*"]
+version = "0.2.0"
+edition = "2021"
 
 [features]
 profile = []
 maya_3dsmax_pbr = []
 
 [dependencies]
-rgb = "0.8.33"
+rgb = "0.8"
 anyhow = "1.0.58"
-glam = { version = "0.21", features = ["mint"] }
+glam = { version = "0.22", features = ["mint"] }
 mint = "0.5"
 # fbxcel-dom = { version = "0.0.9", path = "../fbxcel-dom" }
 fbxcel-dom = "0.0.9"
 
 [dependencies.bevy]
-version = "0.8.1"
+version = "0.9"
 default-features = false
 features = [
-  "tga",
   "bevy_pbr",
   "bevy_render",
   "bevy_winit",
   "bevy_scene",
 ]
 
-[dev-dependencies]
-bevy-inspector-egui = "0.12"
-
 [dev-dependencies.bevy]
-version = "0.8.1"
+version = "0.9"
 default-features = false
 features = [
   "x11", #"wayland",

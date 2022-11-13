@@ -115,12 +115,13 @@ fn spawn_scene(
 
     let mut scene_world = World::default();
     scene_world
-        .spawn()
-        .insert_bundle(VisibilityBundle::default())
-        .insert_bundle(TransformBundle::from_transform(Transform::from_scale(
-            Vec3::ONE * FBX_TO_BEVY_SCALE_FACTOR * fbx_file_scale,
-        )))
-        .insert(Name::new("Fbx scene root"))
+        .spawn((
+            VisibilityBundle::default(),
+            TransformBundle::from_transform(Transform::from_scale(
+                Vec3::ONE * FBX_TO_BEVY_SCALE_FACTOR * fbx_file_scale,
+            )),
+            Name::new("Fbx scene root"),
+        ))
         .with_children(|commands| {
             for root in roots {
                 spawn_scene_rec(*root, commands, hierarchy, models);
@@ -138,15 +139,17 @@ fn spawn_scene_rec(
         Some(node) => node,
         None => return,
     };
-    let mut entity = commands.spawn_bundle(VisibilityBundle::default());
-    entity.insert_bundle(TransformBundle::from_transform(current_node.transform));
+    let mut entity = commands.spawn((
+        VisibilityBundle::default(),
+        TransformBundle::from_transform(current_node.transform),
+    ));
     if let Some(name) = &current_node.name {
         entity.insert(Name::new(name.clone()));
     }
     entity.with_children(|commands| {
         if let Some(mesh) = models.get(&current) {
             for (mat, bevy_mesh) in mesh.materials.iter().zip(&mesh.bevy_mesh_handles) {
-                let mut entity = commands.spawn_bundle(PbrBundle {
+                let mut entity = commands.spawn(PbrBundle {
                     mesh: bevy_mesh.clone(),
                     material: mat.clone(),
                     ..Default::default()

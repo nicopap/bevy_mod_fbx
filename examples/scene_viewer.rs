@@ -8,15 +8,13 @@
 //! With no arguments it will load the default cube.
 
 use bevy::{
-    asset::AssetServerSettings,
     input::mouse::MouseMotion,
-    log::{Level, LogSettings},
+    log::{Level, LogPlugin},
     math::Vec3A,
     prelude::*,
     render::primitives::{Aabb, Sphere},
     window::close_on_esc,
 };
-use bevy_inspector_egui::WorldInspectorPlugin;
 use bevy_mod_fbx::FbxPlugin;
 
 use std::f32::consts::TAU;
@@ -48,20 +46,25 @@ Controls:
         color: Color::WHITE,
         brightness: 1.0 / 5.0f32,
     })
-    .insert_resource(LogSettings {
-        level: Level::WARN,
-        filter: "bevy_mod_fbx=info".to_owned(),
-    })
-    .insert_resource(AssetServerSettings {
-        asset_folder: std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string()),
-        watch_for_changes: true,
-    })
-    .insert_resource(WindowDescriptor {
-        title: "bevy scene viewer".to_string(),
-        ..default()
-    })
-    .add_plugins(DefaultPlugins)
-    .add_plugin(WorldInspectorPlugin::new())
+    .add_plugins(
+        DefaultPlugins
+            .set(AssetPlugin {
+                asset_folder: std::env::var("CARGO_MANIFEST_DIR")
+                    .unwrap_or_else(|_| ".".to_string()),
+                watch_for_changes: true,
+            })
+            .set(LogPlugin {
+                level: Level::WARN,
+                filter: "bevy_mod_fbx=info".to_owned(),
+            })
+            .set(WindowPlugin {
+                window: WindowDescriptor {
+                    title: "bevy scene viewer".to_string(),
+                    ..default()
+                },
+                ..default()
+            }),
+    )
     .add_plugin(FbxPlugin)
     .add_startup_system(setup)
     .add_system(update_lights)
@@ -79,12 +82,13 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         scene_path += "#Scene";
     }
     info!("Loading {}", scene_path);
-    commands
-        .spawn_bundle(Camera3dBundle {
+    commands.spawn((
+        Camera3dBundle {
             transform: Transform::from_xyz(10.0, 4.4, 3.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
-        })
-        .insert(CameraController::default());
+        },
+        CameraController::default(),
+    ));
 
     let sphere = Sphere {
         center: Vec3A::ONE * 3.0,
@@ -95,7 +99,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     let max = aabb.max();
 
     info!("Spawning a directional light");
-    commands.spawn_bundle(DirectionalLightBundle {
+    commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
             illuminance: 20000.0,
             shadow_projection: OrthographicProjection {
@@ -112,12 +116,13 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         },
         ..default()
     });
-    commands
-        .spawn_bundle(SceneBundle {
+    commands.spawn((
+        SceneBundle {
             scene: asset_server.load(&scene_path),
             ..default()
-        })
-        .insert(Name::new(scene_path));
+        },
+        Name::new(scene_path),
+    ));
 }
 
 const SCALE_STEP: f32 = 0.1;
@@ -162,7 +167,7 @@ fn update_lights(
             transform.rotation = Quat::from_euler(
                 EulerRot::ZYX,
                 0.0,
-                time.seconds_since_startup() as f32 * TAU / 30.0,
+                time.elapsed_seconds() * TAU / 30.0,
                 -TAU / 8.,
             );
         }

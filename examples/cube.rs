@@ -1,10 +1,9 @@
 use bevy::{
-    log::{Level, LogSettings},
+    log::{Level, LogPlugin},
     prelude::*,
     render::camera::ScalingMode,
     window::close_on_esc,
 };
-use bevy_inspector_egui::WorldInspectorPlugin;
 use bevy_mod_fbx::FbxPlugin;
 
 #[derive(Component)]
@@ -13,19 +12,22 @@ pub struct Spin;
 fn main() {
     let mut app = App::new();
 
-    app.insert_resource(WindowDescriptor {
-        title: "Spinning Cube".into(),
-        width: 756.0,
-        height: 574.0,
-
-        ..default()
-    })
-    .insert_resource(LogSettings {
-        level: Level::INFO,
-        filter: "bevy_mod_fbx=trace,wgpu=warn".to_owned(),
-    })
-    .add_plugins(DefaultPlugins)
-    .add_plugin(WorldInspectorPlugin::new())
+    app.add_plugins(
+        DefaultPlugins
+            .set(LogPlugin {
+                level: Level::INFO,
+                filter: "bevy_mod_fbx=trace,wgpu=warn".to_owned(),
+            })
+            .set(WindowPlugin {
+                window: WindowDescriptor {
+                    title: "Spinning Cube".into(),
+                    width: 756.0,
+                    height: 574.0,
+                    ..default()
+                },
+                ..default()
+            }),
+    )
     .add_plugin(FbxPlugin)
     .add_startup_system(setup)
     .add_system(spin_cube)
@@ -43,10 +45,8 @@ fn spin_cube(time: Res<Time>, mut query: Query<&mut Transform, With<Spin>>) {
 }
 
 fn setup(mut cmd: Commands, asset_server: Res<AssetServer>) {
-    let cube: Handle<Scene> = asset_server.load("cube.fbx#Scene");
-
     // Orthographic camera
-    cmd.spawn_bundle(Camera3dBundle {
+    cmd.spawn(Camera3dBundle {
         projection: OrthographicProjection {
             scale: 3.0,
             scaling_mode: ScalingMode::FixedVertical(2.0),
@@ -58,15 +58,17 @@ fn setup(mut cmd: Commands, asset_server: Res<AssetServer>) {
     });
 
     // light
-    cmd.spawn_bundle(PointLightBundle {
+    cmd.spawn(PointLightBundle {
         transform: Transform::from_xyz(3.0, 8.0, 5.0),
         ..default()
     });
 
     // Cube
-    cmd.spawn_bundle(SceneBundle {
-        scene: cube,
-        ..default()
-    })
-    .insert(Spin);
+    cmd.spawn((
+        SceneBundle {
+            scene: asset_server.load("cube.fbx#Scene"),
+            ..default()
+        },
+        Spin,
+    ));
 }
