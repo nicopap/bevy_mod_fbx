@@ -2,7 +2,7 @@ use bevy::{
     log::{Level, LogPlugin},
     prelude::*,
     render::camera::ScalingMode,
-    window::close_on_esc,
+    window::{close_on_esc, WindowResolution},
 };
 use bevy_mod_fbx::FbxPlugin;
 
@@ -19,12 +19,11 @@ fn main() {
                 filter: "bevy_mod_fbx=trace,wgpu=warn".to_owned(),
             })
             .set(WindowPlugin {
-                window: WindowDescriptor {
+                primary_window: Some(Window {
                     title: "Spinning Cube".into(),
-                    width: 756.0,
-                    height: 574.0,
+                    resolution: WindowResolution::new(756., 574.),
                     ..default()
-                },
+                }),
                 ..default()
             }),
     )

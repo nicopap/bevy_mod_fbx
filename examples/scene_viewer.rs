@@ -10,17 +10,12 @@
 use bevy::{
     input::mouse::MouseMotion,
     log::{Level, LogPlugin},
-    math::Vec3A,
     prelude::*,
-    render::primitives::{Aabb, Sphere},
     window::close_on_esc,
 };
 use bevy_mod_fbx::FbxPlugin;
 
 use std::f32::consts::TAU;
-
-#[derive(Debug, Hash, PartialEq, Eq, Clone, SystemLabel)]
-struct CameraControllerCheckSystem;
 
 fn main() {
     println!(
@@ -35,9 +30,6 @@ Controls:
     L           - animate light direction
     U           - toggle shadows
     C           - cycle through cameras
-    5/6         - decrease/increase shadow projection width
-    7/8         - decrease/increase shadow projection height
-    9/0         - decrease/increase shadow projection near/far
 
 "
     );
@@ -58,10 +50,10 @@ Controls:
                 filter: "bevy_mod_fbx=info".to_owned(),
             })
             .set(WindowPlugin {
-                window: WindowDescriptor {
+                primary_window: Some(Window {
                     title: "bevy scene viewer".to_string(),
                     ..default()
-                },
+                }),
                 ..default()
             }),
     )
@@ -90,27 +82,10 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         CameraController::default(),
     ));
 
-    let sphere = Sphere {
-        center: Vec3A::ONE * 3.0,
-        radius: 100.0,
-    };
-    let aabb = Aabb::from(sphere);
-    let min = aabb.min();
-    let max = aabb.max();
-
     info!("Spawning a directional light");
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
             illuminance: 20000.0,
-            shadow_projection: OrthographicProjection {
-                left: min.x,
-                right: max.x,
-                bottom: min.y,
-                top: max.y,
-                near: min.z,
-                far: max.z,
-                ..default()
-            },
             shadows_enabled: false,
             ..default()
         },
@@ -148,12 +123,6 @@ fn update_lights(
         projection_adjustment.z += SCALE_STEP;
     }
     for (_, mut light) in query.iter_mut() {
-        light.shadow_projection.left *= projection_adjustment.x;
-        light.shadow_projection.right *= projection_adjustment.x;
-        light.shadow_projection.bottom *= projection_adjustment.y;
-        light.shadow_projection.top *= projection_adjustment.y;
-        light.shadow_projection.near *= projection_adjustment.z;
-        light.shadow_projection.far *= projection_adjustment.z;
         if key_input.just_pressed(KeyCode::U) {
             light.shadows_enabled = !light.shadows_enabled;
         }
