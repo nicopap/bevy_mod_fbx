@@ -18,7 +18,7 @@ maya_3dsmax_pbr = []
 [dependencies]
 rgb = "0.8"
 anyhow = "1.0.58"
-glam = { version = "0.22", features = ["mint"] }
+glam = { version = "0.23", features = ["mint"] }
 mint = "0.5"
 # fbxcel-dom = { version = "0.0.9", path = "../fbxcel-dom" }
 fbxcel-dom = "0.0.9"
