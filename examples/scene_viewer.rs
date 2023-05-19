@@ -8,12 +8,13 @@
 //! With no arguments it will load the default cube.
 
 use bevy::{
+    asset::io::AssetProviders,
     input::mouse::MouseMotion,
     log::{Level, LogPlugin},
     prelude::*,
     window::close_on_esc,
 };
-use bevy_mod_fbx::FbxPlugin;
+use bevy_mod_fbx::{FbxPlugin, FbxScene};
 
 use std::f32::consts::TAU;
 
@@ -38,16 +39,15 @@ Controls:
         color: Color::WHITE,
         brightness: 1.0 / 5.0f32,
     })
+    .insert_resource(AssetProviders::default().with_default_file_source(
+        std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string()),
+    ))
     .add_plugins(
         DefaultPlugins
-            .set(AssetPlugin {
-                asset_folder: std::env::var("CARGO_MANIFEST_DIR")
-                    .unwrap_or_else(|_| ".".to_string()),
-                watch_for_changes: true,
-            })
+            .set(AssetPlugin::default().watch_for_changes())
             .set(LogPlugin {
                 level: Level::WARN,
-                filter: "bevy_mod_fbx=info".to_owned(),
+                filter: "bevy_mod_fbx=trace".to_owned(),
             })
             .set(WindowPlugin {
                 primary_window: Some(Window {
@@ -58,11 +58,11 @@ Controls:
             }),
     )
     .add_plugin(FbxPlugin)
-    .add_startup_system(setup)
-    .add_system(update_lights)
-    .add_system(camera_controller)
-    .add_system(close_on_esc);
-
+    .add_systems(Startup, setup)
+    .add_systems(
+        Update,
+        (print_fbx, update_lights, camera_controller, close_on_esc),
+    );
     app.run();
 }
 
@@ -101,6 +101,43 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 }
 
 const SCALE_STEP: f32 = 0.1;
+
+fn print_fbx(
+    key_input: Res<Input<KeyCode>>,
+    scenes: Res<Assets<FbxScene>>,
+    b_scenes: Res<Assets<Scene>>,
+    images: Res<Assets<Image>>,
+    meshes: Res<Assets<Mesh>>,
+    mats: Res<Assets<StandardMaterial>>,
+    names: Query<(DebugName, Option<&Visibility>, Option<&Children>)>,
+) {
+    if key_input.just_pressed(KeyCode::Space) {
+        println!("FbxScene");
+        for scene in scenes.iter() {
+            println!("{scene:?}");
+        }
+        println!("Scene");
+        for scene in b_scenes.iter() {
+            println!("{scene:?}");
+        }
+        println!("Image");
+        for (image, _) in images.iter() {
+            println!("{image:?}");
+        }
+        println!("Mesh");
+        for (mesh, _) in meshes.iter() {
+            println!("{mesh:?}");
+        }
+        println!("StandardMaterial");
+        for (mat, mat_value) in mats.iter() {
+            println!("{mat:?} {mat_value:?}");
+        }
+        println!("DebugName");
+        for (name, vis, ch) in &names {
+            println!("{name:?} {vis:?} {ch:?}");
+        }
+    }
+}
 
 fn update_lights(
     key_input: Res<Input<KeyCode>>,

@@ -1,0 +1,9 @@
+(
+    meta_format_version: "1.0",
+    asset: Load(
+        loader: "bevy_mod_fbx::loader::FbxLoader",
+        settings: (
+            override_scale: None,
+        ),
+    ),
+)

@@ -23,10 +23,10 @@ use fbxcel_dom::{
 use rgb::{RGB, RGBA};
 
 pub trait MaterialHandleExt<'a> {
-    fn load_texture(&self, name: &'static str) -> Option<TextureHandle>;
+    fn load_texture(&self, name: &str) -> Option<TextureHandle>;
 }
 impl<'a> MaterialHandleExt<'a> for MaterialHandle<'a> {
-    fn load_texture(&self, name: &'static str) -> Option<TextureHandle> {
+    fn load_texture(&self, name: &str) -> Option<TextureHandle> {
         self.source_objects()
             .filter(|obj| obj.label() == Some(name))
             .filter_map(|obj| obj.object_handle())

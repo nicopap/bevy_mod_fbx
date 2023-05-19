@@ -16,15 +16,17 @@ profile = []
 maya_3dsmax_pbr = []
 
 [dependencies]
+# tmf = { version = "0.1.1" }
+serde = "1.0"
 rgb = "0.8"
-anyhow = "1.0.58"
-glam = { version = "0.23", features = ["mint"] }
+anyhow = "1.0"
+glam = { version = "0.24", features = ["mint"] }
 mint = "0.5"
 # fbxcel-dom = { version = "0.0.9", path = "../fbxcel-dom" }
 fbxcel-dom = "0.0.9"
 
 [dependencies.bevy]
-version = "0.10"
+version = "0.11.0-dev"
 default-features = false
 features = [
   "bevy_pbr",
@@ -34,16 +36,17 @@ features = [
 ]
 
 [dev-dependencies.bevy]
-version = "0.10"
+version = "0.11.0-dev"
 default-features = false
 features = [
   "x11", #"wayland",
-
   "tga", "dds",
   "bevy_pbr",
   "bevy_render",
   "bevy_winit",
   "bevy_scene",
-  "filesystem_watcher",
   "bevy_core_pipeline"
 ]
+
+[patch.crates-io]
+bevy = { git = "https://github.com/cart/bevy.git", branch = "bevy_asset_v2" }

@@ -4,7 +4,7 @@ use bevy::{
     render::camera::ScalingMode,
     window::{close_on_esc, WindowResolution},
 };
-use bevy_mod_fbx::FbxPlugin;
+use bevy_mod_fbx::{FbxPlugin, FbxScene};
 
 #[derive(Component)]
 pub struct Spin;
@@ -28,9 +28,8 @@ fn main() {
             }),
     )
     .add_plugin(FbxPlugin)
-    .add_startup_system(setup)
-    .add_system(spin_cube)
-    .add_system(close_on_esc);
+    .add_systems(Startup, setup)
+    .add_systems(Update, (spin_cube, close_on_esc, print_fbx));
 
     app.run();
 }
@@ -42,6 +41,9 @@ fn spin_cube(time: Res<Time>, mut query: Query<&mut Transform, With<Spin>>) {
         transform.rotate_local_z(0.3 * time.delta_seconds());
     }
 }
+
+#[derive(Resource)]
+struct StoreAssets(Handle<FbxScene>);
 
 fn setup(mut cmd: Commands, asset_server: Res<AssetServer>) {
     // Orthographic camera
@@ -62,6 +64,7 @@ fn setup(mut cmd: Commands, asset_server: Res<AssetServer>) {
         ..default()
     });
 
+    cmd.insert_resource(StoreAssets(asset_server.load("cube.fbx#FbxScene")));
     // Cube
     cmd.spawn((
         SceneBundle {
@@ -70,4 +73,40 @@ fn setup(mut cmd: Commands, asset_server: Res<AssetServer>) {
         },
         Spin,
     ));
+}
+fn print_fbx(
+    key_input: Res<Input<KeyCode>>,
+    scenes: Res<Assets<FbxScene>>,
+    b_scenes: Res<Assets<Scene>>,
+    images: Res<Assets<Image>>,
+    meshes: Res<Assets<Mesh>>,
+    mats: Res<Assets<StandardMaterial>>,
+    names: Query<(DebugName, Option<&Visibility>, Option<&Children>)>,
+) {
+    if key_input.just_pressed(KeyCode::Space) {
+        println!("FbxScene");
+        for scene in scenes.iter() {
+            println!("{scene:?}");
+        }
+        println!("Scene");
+        for scene in b_scenes.iter() {
+            println!("{scene:?}");
+        }
+        println!("Image");
+        for (image, _) in images.iter() {
+            println!("{image:?}");
+        }
+        println!("Mesh");
+        for (mesh, _) in meshes.iter() {
+            println!("{mesh:?}");
+        }
+        println!("StandardMaterial");
+        for (mat, mat_value) in mats.iter() {
+            println!("{mat:?} {mat_value:?}");
+        }
+        println!("DebugName");
+        for (name, vis, ch) in &names {
+            println!("{name:?} {vis:?} {ch:?}");
+        }
+    }
 }

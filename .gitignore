@@ -1,5 +1,6 @@
 # Cargo
 /target
+/.imported_assets
 Cargo.lock
 
 # Nix/NixOS

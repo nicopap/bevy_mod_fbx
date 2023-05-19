@@ -1,10 +1,10 @@
+use crate::texture::Textures;
 #[cfg(feature = "maya_3dsmax_pbr")]
 use crate::utils::fbx_extend::*;
 
 use bevy::{
     pbr::{AlphaMode, StandardMaterial},
-    prelude::{Color, Handle, Image},
-    utils::HashMap,
+    prelude::Color,
 };
 use fbxcel_dom::v7400::{data::material::ShadingModel, object::material::MaterialHandle};
 use rgb::RGB;
@@ -14,43 +14,10 @@ use rgb::RGB;
 /// Define your own to extend `bevy_mod_fbx`'s material loading capabilities.
 #[derive(Clone, Copy)]
 pub struct MaterialLoader {
-    /// The FBX texture field name used by the material you are loading.
-    ///
-    /// Textures declared here are directly passed to `with_textures` without modification,
-    /// this enables caching and re-using textures without re-reading the files
-    /// multiple times over.
-    ///
-    /// They are loaded by the [`FbxLoader`] and provided to the other functions
-    /// defined in the rest of this struct, associated with their names in a `HashMap`.
-    ///
-    /// [`FbxLoader`]: crate::FbxLoader
-    pub static_load: &'static [&'static str],
-
-    /// The FBX texture field name used by textures you wish to transform.
-    ///
-    /// Textures declared here are passed to `preprocess_textures` for further
-    /// processing, enabling preprocessing.
-    ///
-    /// They are loaded by the [`FbxLoader`] and provided to the other functions
-    /// defined in the rest of this struct, associated with their names in a `HashMap`.
-    ///
-    /// [`FbxLoader`]: crate::FbxLoader
-    pub dynamic_load: &'static [&'static str],
-
-    /// Run some math on the loaded textures, handy if you have to convert between texture
-    /// formats or swap color channels.
-    ///
-    /// To update, remove or add textures, return the `HashMap` with the new values.
-    ///
-    /// The `Image`s are then added to the asset store (`Assets<Image>`) and a handle
-    /// to them is passed to `with_textures` in additions to the handles of the textures
-    /// declared in the `static_load` field.
-    pub preprocess_textures: fn(MaterialHandle, &mut HashMap<&'static str, Image>),
-
     /// Create and return the bevy [`StandardMaterial`] based on the [`Handle<Image>`] loaded
     /// from the return value of `preprocess_textures`.
-    pub with_textures:
-        fn(MaterialHandle, HashMap<&'static str, Handle<Image>>) -> Option<StandardMaterial>,
+    pub with_textures: fn(MaterialHandle, Textures) -> Option<StandardMaterial>,
+    pub name: &'static str,
 }
 
 const SPECULAR_TO_METALLIC_RATIO: f32 = 0.8;
@@ -61,15 +28,8 @@ const SPECULAR_TO_METALLIC_RATIO: f32 = 0.8;
 /// Note that the conversion has very poor fidelity, since Phong doesn't map well
 /// to PBR.
 pub const LOAD_LAMBERT_PHONG: MaterialLoader = MaterialLoader {
-    static_load: &[
-        "NormalMap",
-        "EmissiveColor",
-        "DiffuseColor",
-        "TransparentColor",
-    ],
-    dynamic_load: &[],
-    preprocess_textures: |_, _| {},
-    with_textures: |material_obj, textures| {
+    name: "LOAD_LAMBERT_PHONG",
+    with_textures: |material_obj, mut textures| {
         use AlphaMode::{Blend, Opaque};
         use ShadingModel::{Lambert, Phong};
         let properties = material_obj.properties();
@@ -79,9 +39,9 @@ pub const LOAD_LAMBERT_PHONG: MaterialLoader = MaterialLoader {
         if !matches!(shading_model, Lambert | Phong) {
             return None;
         };
-        let transparent = textures.get("TransparentColor").cloned();
+        let transparent = textures.get("TransparentColor");
         let is_transparent = transparent.is_some();
-        let diffuse = transparent.or_else(|| textures.get("DiffuseColor").cloned());
+        let diffuse = transparent.or_else(|| textures.get("DiffuseColor"));
         let base_color = properties
             .diffuse_color_or_default()
             .map_or(Default::default(), ColorAdapter)
@@ -101,9 +61,9 @@ pub const LOAD_LAMBERT_PHONG: MaterialLoader = MaterialLoader {
             base_color,
             metallic,
             perceptual_roughness: roughness as f32,
-            emissive_texture: textures.get("EmissiveColor").cloned(),
+            emissive_texture: textures.get("EmissiveColor"),
             base_color_texture: diffuse,
-            normal_map_texture: textures.get("NormalMap").cloned(),
+            normal_map_texture: textures.get("NormalMap"),
             flip_normal_map_y: true,
             ..Default::default()
         })
@@ -115,9 +75,7 @@ pub const LOAD_LAMBERT_PHONG: MaterialLoader = MaterialLoader {
 /// Picks up the non-texture material values if possible,
 /// otherwise it will just look like white clay.
 pub const LOAD_FALLBACK: MaterialLoader = MaterialLoader {
-    static_load: &[],
-    dynamic_load: &[],
-    preprocess_textures: |_, _| {},
+    name: "LOAD_FALLBACK",
     with_textures: |material_obj, _| {
         let properties = material_obj.properties();
         let base_color = properties
@@ -164,59 +122,8 @@ mod maya_consts {
 /// This loader is only available if the `maya_pbr` feature is enabled.
 #[cfg(feature = "maya_3dsmax_pbr")]
 pub const LOAD_MAYA_PBR: MaterialLoader = MaterialLoader {
-    static_load: &[
-        "Maya|TEX_normal_map",
-        "Maya|TEX_color_map",
-        "Maya|TEX_ao_map",
-        "Maya|TEX_emissive_map",
-    ],
-    dynamic_load: &["Maya|TEX_metallic_map", "Maya|TEX_roughness_map"],
-    // FIXME: this assumes both metallic map and roughness map
-    // are encoded in texture formats that can be stored as
-    // a byte array in CPU memory.
-    // This is not the case for compressed formats such as KTX or DDS
-    // FIXME: this also assumes the texture channels are 8 bit.
-    preprocess_textures: |material_handle, images| {
-        use bevy::render::render_resource::{TextureDimension::D2, TextureFormat::Rgba8UnormSrgb};
-        let mut run = || {
-            // return early if we detect this material is not Maya's PBR material
-            let mat_maya_type = material_handle.get_i32("Maya|TypeId")?;
-            if mat_maya_type != maya_consts::PBR_TYPE_ID {
-                return None;
-            }
-            let combine_colors = |colors: &[u8]| match colors {
-                // Only one channel is necessary for the metallic and roughness
-                // maps. If we assume the texture is greyscale, we can take any
-                // channel (R, G, B) and assume it's approximately the value we want.
-                &[bw, ..] => bw,
-                _ => unreachable!("A texture must at least have a single channel"),
-            };
-            // Merge the metallic and roughness map textures into one,
-            // following the GlTF standard for PBR textures.
-            // The resulting texture should have:
-            // - Green channel set to roughness
-            // - Blue channel set to metallic
-            let metallic = images.remove("Maya|TEX_metallic_map")?;
-            let rough = images.remove("Maya|TEX_roughness_map")?;
-            let image_size = metallic.texture_descriptor.size;
-            let metallic_components =
-                metallic.texture_descriptor.format.describe().components as usize;
-            let rough_components = rough.texture_descriptor.format.describe().components as usize;
-            let metallic_rough: Vec<_> = metallic
-                .data
-                .chunks(metallic_components)
-                .zip(rough.data.chunks(rough_components))
-                .flat_map(|(metallic, rough)| {
-                    [0, combine_colors(rough), combine_colors(metallic), 255]
-                })
-                .collect();
-            let metallic_rough = Image::new(image_size, D2, metallic_rough, Rgba8UnormSrgb);
-            images.insert("Metallic_Roughness", metallic_rough);
-            Some(())
-        };
-        run();
-    },
-    with_textures: |handle, textures| {
+    name: "LOAD_MAYA_PBR",
+    with_textures: |handle, mut textures| {
         // return early if we detect this material is not Maya's PBR material
         let mat_maya_type = handle.get_i32("Maya|TypeId");
         if mat_maya_type != Some(maya_consts::PBR_TYPE_ID) {
@@ -230,8 +137,7 @@ pub const LOAD_MAYA_PBR: MaterialLoader = MaterialLoader {
         // so if `use_map` is 1.0, only the texture pixel counts,
         // while if it is 0.0, only the baseline count, and anything inbetween
         // is a mix of the two.
-        let has_rm_texture = textures.contains_key("Metallic_Roughness");
-        let use_texture = if has_rm_texture { 1.0 } else { 0.0 };
+        let use_texture = 0.0;
         let use_metallic = handle
             .get_f32("Maya|use_metallic_map")
             .unwrap_or(use_texture);
@@ -246,13 +152,12 @@ pub const LOAD_MAYA_PBR: MaterialLoader = MaterialLoader {
             .unwrap_or(maya_consts::DEFAULT_ROUGHNESS);
         Some(StandardMaterial {
             flip_normal_map_y: true,
-            base_color_texture: textures.get("Maya|TEX_color_map").cloned(),
-            normal_map_texture: textures.get("Maya|TEX_normal_map").cloned(),
-            metallic_roughness_texture: textures.get("Metallic_Roughness").cloned(),
+            base_color_texture: textures.get("Maya|TEX_color_map"),
+            normal_map_texture: textures.get("Maya|TEX_normal_map"),
             metallic: lerp(metallic, 1.0, use_metallic),
             perceptual_roughness: lerp(roughness, 1.0, use_roughness),
-            occlusion_texture: textures.get("Maya|TEX_ao_map").cloned(),
-            emissive_texture: textures.get("Maya|TEX_emissive_map").cloned(),
+            occlusion_texture: textures.get("Maya|TEX_ao_map"),
+            emissive_texture: textures.get("Maya|TEX_emissive_map"),
             alpha_mode: AlphaMode::Opaque,
             ..Default::default()
         })

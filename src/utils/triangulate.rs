@@ -2,7 +2,7 @@
 
 // TODO: https://github.com/HeavyRain266/bevy_mod_fbx/issues/11
 
-use anyhow::{anyhow, bail};
+use anyhow::bail;
 use bevy::math::{DVec2, DVec3};
 use fbxcel_dom::v7400::data::mesh::{PolygonVertexIndex, PolygonVertices};
 
@@ -25,34 +25,24 @@ fn smallest_direction(v: &DVec3) -> Axis {
 
 /// Triangulate.
 pub fn triangulate(
-    pvs: &PolygonVertices<'_>,
-    poly_pvis: &[PolygonVertexIndex],
-    results: &mut Vec<[PolygonVertexIndex; 3]>,
+    vertices: &PolygonVertices<'_>,
+    indices: &[PolygonVertexIndex],
+    triangles: &mut Vec<[PolygonVertexIndex; 3]>,
 ) -> anyhow::Result<()> {
-    macro_rules! get_vec {
-        ($pvii:expr) => {
-            get_vec(pvs, poly_pvis[$pvii])
-        };
-    }
+    let position_at = |i| DVec3::from(vertices.control_point(i).unwrap());
 
-    match poly_pvis.len() {
-        n @ 0..=2 => {
-            // Not a polygon.
-            // It is impossible to triangulate a point, line, or "nothing".
-            bail!("Not enough vertices in the polygon: length={n}");
-        }
-        3 => {
-            // Got a triangle, no need of triangulation.
-            results.push([poly_pvis[0], poly_pvis[1], poly_pvis[2]]);
+    let n = indices.len();
 
-            Ok(())
-        }
-        4 => {
+    match indices {
+        // Not a polygon.
+        [] | [_] | [_, _] => bail!("A polygon of size {n} cannot be triangulated"),
+
+        // Got a triangle, no need of triangulation.
+        &[i0, i1, i2] => triangles.push([i0, i1, i2]),
+
+        &[i0, i1, i2, i3] => {
             // p0, p1, p2, p3: vertices of the quadrangle (angle{0..3}).
-            let p0 = get_vec!(0)?;
-            let p1 = get_vec!(1)?;
-            let p2 = get_vec!(2)?;
-            let p3 = get_vec!(3)?;
+            let [p0, p1, p2, p3] = [i0, i1, i2, i3].map(position_at);
 
             // n1: Normal vector calculated with two edges of the angle1.
             // n3: Normal vector calculated with two edges of the angle3.
@@ -71,22 +61,14 @@ pub fn triangulate(
                 // Both angle1 and angle3 are concave.
                 // This means that either angle0 or angle2 can be convex.
                 // Cut from p0 to p2.
-                results.extend_from_slice(&[
-                    [poly_pvis[0], poly_pvis[1], poly_pvis[2]],
-                    [poly_pvis[2], poly_pvis[3], poly_pvis[0]],
-                ]);
+                triangles.extend_from_slice(&[[i0, i1, i2], [i2, i3, i0]]);
             } else {
-                // Either angle1 or angle3 is convex.
-                // Cut from p1 to p3.
-                results.extend_from_slice(&[
-                    [poly_pvis[0], poly_pvis[1], poly_pvis[3]],
-                    [poly_pvis[3], poly_pvis[1], poly_pvis[2]],
-                ]);
+                // Either angle1 or angle3 is convex. Cut from p1 to p3.
+                triangles.extend_from_slice(&[[i0, i1, i3], [i3, i1, i2]]);
             }
-            Ok(())
         }
-        n => {
-            let points = (0..n).map(|i| get_vec!(i)).collect::<Result<Vec<_>, _>>()?;
+        indices => {
+            let points: Vec<_> = indices.iter().map(|i| position_at(*i)).collect();
             let points_2d: Vec<_> = {
                 // Reduce dimensions for faster computation.
                 // This helps treat points which are not on a single plane.
@@ -136,33 +118,25 @@ pub fn triangulate(
                     .position(|&sign| sign == minor_sign)
                     .unwrap_or(0);
 
-                let convex_pvi = poly_pvis[convex_index];
+                let convex_pvi = indices[convex_index];
 
                 let iter1 = (0..n)
                     .cycle()
                     .skip(convex_index + 1)
                     .take(n - 2)
-                    .map(|i| poly_pvis[i]);
+                    .map(|i| indices[i]);
 
-                let iter2 = (0..n).cycle().skip(convex_index + 2).map(|i| poly_pvis[i]);
+                let iter2 = (0..n).cycle().skip(convex_index + 2).map(|i| indices[i]);
 
                 for (pvi1, pvi2) in iter1.zip(iter2) {
-                    results.push([convex_pvi, pvi1, pvi2]);
+                    triangles.push([convex_pvi, pvi1, pvi2]);
                 }
-
-                Ok(())
             } else {
                 bail!("Unsupported polygon: {n}-gon with two or more concave angles");
             }
         }
     }
-}
-
-/// Returns the vector.
-fn get_vec(pvs: &PolygonVertices<'_>, pvi: PolygonVertexIndex) -> anyhow::Result<DVec3> {
-    pvs.control_point(pvi)
-        .map(Into::into)
-        .ok_or_else(|| anyhow!("Index out of range: {pvi:?}"))
+    Ok(())
 }
 
 /// Returns bounding box as `(min, max)`.
